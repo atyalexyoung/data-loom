@@ -1,0 +1,16 @@
+{
+    "name": "data-loom dev container",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    "extensions": [
+        "golang.go",
+        "ms-azuretools.vscode-docker"
+    ],
+    "settings": {
+        "go.gopath": "/go",
+        "go.useLanguageServer": true
+    },
+    "forwardPorts": [
+        50051
+    ]
+}
