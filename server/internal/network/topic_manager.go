@@ -121,16 +121,47 @@ func (tm *TopicManager) Get(topicName string) (any, error) {
 	return topic.value, nil
 }
 
-// func (tm *TopicManager) RegisterTopic(topicName string, schema map[string]any) error {
-// 	tm.mu.RLock()
-// 	topic, ok := tm.topics[topicName]
-// 	if ok {
-// 		return fmt.Errorf("cannot register topic. topic already exists. consider updating topic")
-// 	}
-// 	topic.
+// RegisterTopic takes a topic name and schema for the topic and will add it to list of topics.
+// This will create a schema of version 0 for the topic. Returns error if the topic already exists
+func (tm *TopicManager) RegisterTopic(topicName string, schema map[string]any) (*Topic, error) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 
-// }
+	_, ok := tm.topics[topicName]
+	if ok { // if we get a topic, it already exists
+		return nil, fmt.Errorf("cannot register topic. topic already exists. consider updating topic")
+	}
 
-// func (tm *TopicManager) UnregisterTopic(topicName string) error {
+	topic := &Topic{ // create the new topic reference
+		Name:        topicName,
+		Subscribers: make(map[*Client]bool),
+		Schemas:     make(map[int]*TopicSchema),
+		// value: nil, leave as default
+		// LatestSchema: 0, leave as default
+	}
 
-// }
+	topic.Schemas[0] = &TopicSchema{ // create new schema and add it to map
+		Version: 0,
+		Schema:  schema,
+	}
+
+	// add new schema to topic manager
+	tm.topics[topic.Name] = topic
+
+	return topic, nil
+}
+
+// UnregisterTopic takes name of topic to unregister and removes it from the topics.
+// returns error if topic doesn't exist.
+func (tm *TopicManager) UnregisterTopic(topicName string) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	_, ok := tm.topics[topicName]
+	if !ok {
+		return fmt.Errorf("cannot unregister topic. topic doesn't exist with name: %s", topicName)
+	}
+
+	delete(tm.topics, topicName)
+	return nil
+}
