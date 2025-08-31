@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/atyalexyoung/data-loom/server/internal/network"
+	"github.com/atyalexyoung/data-loom/server/internal/topic"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -44,14 +45,16 @@ type HandlerFunc func(*network.Client, WebSocketMessage)
 // for the various actions that clients can take.
 type WebSocketServer struct {
 	hub          *network.ClientHub
-	topicManager *network.TopicManager
+	topicManager *topic.TopicManager
 	upgrader     websocket.Upgrader
 	handlers     map[string]HandlerFunc
 	config       Config
 }
 
 type Config struct {
-	APIKey string
+	APIKey      string
+	StorageType string
+	StoragePath string
 }
 
 func loadConfig() *Config {
@@ -69,7 +72,7 @@ func loadConfig() *Config {
 }
 
 // NewWebSocketServer will create and set up a WebSocketServer struct that is ready to use.
-func NewWebSocketServer(hub *network.ClientHub, topicManager *network.TopicManager) *WebSocketServer {
+func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager) *WebSocketServer {
 	s := &WebSocketServer{
 		hub:          hub,
 		topicManager: topicManager,

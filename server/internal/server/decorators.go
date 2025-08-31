@@ -48,6 +48,6 @@ func (s *WebSocketServer) metricsDecorator(next HandlerFunc) HandlerFunc {
 		start := time.Now()
 		next(c, msg)
 		duration := time.Since(start)
-		log.Printf("Handler %s took %v", msg.Action, duration)
+		log.Infof("Handling client: %s for msg type: %s, took %v", c.Id, msg.Action, duration)
 	}
 }

@@ -1,10 +1,12 @@
-package network
+package topic
 
 import (
 	"fmt"
 	"log"
 	"sync"
 
+	"github.com/atyalexyoung/data-loom/server/internal/network"
+	"github.com/atyalexyoung/data-loom/server/internal/storage"
 	"github.com/gorilla/websocket"
 )
 
@@ -12,6 +14,7 @@ import (
 type TopicManager struct {
 	mu     sync.RWMutex
 	topics map[string]*Topic
+	db     storage.Storage
 }
 
 type TopicSchema struct {
@@ -19,14 +22,15 @@ type TopicSchema struct {
 	Schema  map[string]interface{}
 }
 
-func NewTopicManager() *TopicManager {
+func NewTopicManager(storage storage.Storage) *TopicManager {
 	return &TopicManager{
 		topics: make(map[string]*Topic),
+		db:     storage,
 	}
 }
 
 // Subscribe checks if the topic
-func (tm *TopicManager) Subscribe(topicName string, client *Client) error {
+func (tm *TopicManager) Subscribe(topicName string, client *network.Client) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -40,7 +44,7 @@ func (tm *TopicManager) Subscribe(topicName string, client *Client) error {
 }
 
 // Unsubscribe removes a client from the subscription list for a given topic name.
-func (tm *TopicManager) Unsubscribe(topicName string, client *Client) error {
+func (tm *TopicManager) Unsubscribe(topicName string, client *network.Client) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -52,7 +56,7 @@ func (tm *TopicManager) Unsubscribe(topicName string, client *Client) error {
 }
 
 // ListSubscribersForTopic returns a copy of the list of all clients that are subscribed to a given topic name.
-func (tm *TopicManager) ListSubscribersForTopic(topicName string) ([]*Client, error) {
+func (tm *TopicManager) ListSubscribersForTopic(topicName string) ([]*network.Client, error) {
 	topic, ok := tm.topics[topicName]
 	if !ok {
 		return nil, fmt.Errorf("cannot get subscribers for topic. topic doesn't exist. Topic: %s", topicName)
@@ -61,7 +65,7 @@ func (tm *TopicManager) ListSubscribersForTopic(topicName string) ([]*Client, er
 }
 
 // UnsubscribeAll removes a client from all topics.
-func (tm *TopicManager) UnsubscribeAll(client *Client) {
+func (tm *TopicManager) UnsubscribeAll(client *network.Client) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -74,7 +78,7 @@ func (tm *TopicManager) UnsubscribeAll(client *Client) {
 }
 
 // Publish will send the JSON of the message to all clients subscribed to the topic
-func (tm *TopicManager) Publish(topicName string, sender *Client, message any) error {
+func (tm *TopicManager) Publish(topicName string, sender *network.Client, value []byte) error {
 	tm.mu.Lock()
 	topic, ok := tm.topics[topicName]
 	tm.mu.Unlock()
@@ -86,13 +90,13 @@ func (tm *TopicManager) Publish(topicName string, sender *Client, message any) e
 	topic.mu.Lock()
 	defer topic.mu.Unlock()
 
-	// set current message for topic
-	topic.value = message
+	//topic.value = value
+	tm.db.Put(topicName, value)
 
 	// publish to all subscribers
 	for client := range topic.Subscribers {
 		if client != sender {
-			err := client.SendJSON(message)
+			err := client.SendJSON(value)
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					go tm.UnsubscribeAll(client)
@@ -107,7 +111,7 @@ func (tm *TopicManager) Publish(topicName string, sender *Client, message any) e
 }
 
 // Get will retrieve the current value for a given topic
-func (tm *TopicManager) Get(topicName string) (any, error) {
+func (tm *TopicManager) Get(topicName string) ([]byte, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -118,7 +122,12 @@ func (tm *TopicManager) Get(topicName string) (any, error) {
 
 	topic.mu.RLock()
 	defer topic.mu.RUnlock()
-	return topic.value, nil
+
+	value, err := tm.db.Get(topic.Name)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get value for topic with error: %v", err)
+	}
+	return value, nil
 }
 
 // RegisterTopic takes a topic name and schema for the topic and will add it to list of topics.
@@ -134,7 +143,7 @@ func (tm *TopicManager) RegisterTopic(topicName string, schema map[string]any) (
 
 	topic := &Topic{ // create the new topic reference
 		Name:        topicName,
-		Subscribers: make(map[*Client]bool),
+		Subscribers: make(map[*network.Client]bool),
 		Schemas:     make(map[int]*TopicSchema),
 		// value: nil, leave as default
 		// LatestSchema: 0, leave as default
@@ -163,5 +172,10 @@ func (tm *TopicManager) UnregisterTopic(topicName string) error {
 	}
 
 	delete(tm.topics, topicName)
+
+	if err := tm.db.Delete(topicName); err != nil {
+		return fmt.Errorf("Topic deleted but unable to delete from persistent storage with err: %v", err)
+	}
+
 	return nil
 }

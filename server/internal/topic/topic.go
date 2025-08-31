@@ -1,20 +1,21 @@
-package network
+package topic
 
 import (
 	"fmt"
 	"sync"
+
+	"github.com/atyalexyoung/data-loom/server/internal/network"
 )
 
 type Topic struct {
 	Name         string
 	mu           sync.RWMutex
-	Subscribers  map[*Client]bool
+	Subscribers  map[*network.Client]bool
 	Schemas      map[int]*TopicSchema
 	LatestSchema int
-	value        any
 }
 
-func (t *Topic) Unsubscribe(client *Client) error {
+func (t *Topic) Unsubscribe(client *network.Client) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	_, ok := t.Subscribers[client]
@@ -25,24 +26,24 @@ func (t *Topic) Unsubscribe(client *Client) error {
 	return nil
 }
 
-func (t *Topic) IsClientSubscribed(client *Client) bool {
+func (t *Topic) IsClientSubscribed(client *network.Client) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	_, ok := t.Subscribers[client]
 	return ok
 }
 
-func (t *Topic) Subscribe(client *Client) {
+func (t *Topic) Subscribe(client *network.Client) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Subscribers[client] = true
 }
 
-func (t *Topic) ListSubscribers() []*Client {
+func (t *Topic) ListSubscribers() []*network.Client {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	clients := make([]*Client, 0, len(t.Subscribers))
+	clients := make([]*network.Client, 0, len(t.Subscribers))
 	for c := range t.Subscribers {
 		clients = append(clients, c)
 	}

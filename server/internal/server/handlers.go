@@ -147,6 +147,10 @@ func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg WebSocke
 	}
 }
 
+func (s *WebSocketServer) listTopics(c *network.Client, msg WebSocketMessage) {
+
+}
+
 /*
 	/* FUTURE HANDLERS
 	"list": s.TopicManager.ListTopics(),
