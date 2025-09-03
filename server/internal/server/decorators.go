@@ -12,9 +12,9 @@ import (
 
 func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message topic decorator.")
-	return func(c *network.Client, msg WebSocketMessage) {
+	return func(c *network.Client, msg network.WebSocketMessage) {
 		if len(strings.TrimSpace(msg.Topic)) == 0 {
-			s.SendToClient(c, Response{
+			s.SendToClient(c, network.Response{
 				Id:      msg.Id,
 				Type:    msg.Action,
 				Code:    http.StatusBadRequest,
@@ -28,9 +28,9 @@ func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 
 func (s *WebSocketServer) requireDataDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message data decorator.")
-	return func(c *network.Client, msg WebSocketMessage) {
+	return func(c *network.Client, msg network.WebSocketMessage) {
 		if msg.Data == nil {
-			s.SendToClient(c, Response{
+			s.SendToClient(c, network.Response{
 				Id:      msg.Id,
 				Type:    msg.Action,
 				Code:    http.StatusBadRequest,
@@ -44,7 +44,7 @@ func (s *WebSocketServer) requireDataDecorator(next HandlerFunc) HandlerFunc {
 
 func (s *WebSocketServer) metricsDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning metrics decorator")
-	return func(c *network.Client, msg WebSocketMessage) {
+	return func(c *network.Client, msg network.WebSocketMessage) {
 		start := time.Now()
 		next(c, msg)
 		duration := time.Since(start)

@@ -15,30 +15,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// WebSocketMessage contains a message that is sent from the client to the server.
-// Contains the action to preform, the topic to preform the action on (if applicable),
-// and any accompanying data (if applicable)
-type WebSocketMessage struct {
-	Id         string          `json:"id"`
-	Action     string          `json:"action"`
-	Topic      string          `json:"topic,omitempty"`
-	Data       json.RawMessage `json:"data,omitempty"`
-	RequireAck bool            `json:"requireAck,omitempty"`
-}
-
-// Response struct is a response that is sent back to a client from the server.
-// it will contain the type of response, the status code as http code,
-// any accompanying message about the status if applicable, and the data if applicable
-type Response struct {
-	Id      string      `json:"id"`
-	Type    string      `json:"type"`
-	Code    int         `json:"code"`              // 200, 400, etc.
-	Message string      `json:"message,omitempty"` // "OK" or error message
-	Data    interface{} `json:"data,omitempty"`    // optional payload (topic info, schema, etc.)
-}
-
 // HandlerFunc is a function signature definition for all handlers of client requests.
-type HandlerFunc func(*network.Client, WebSocketMessage)
+type HandlerFunc func(*network.Client, network.WebSocketMessage)
 
 // WebSocketServer is the server struct that contains the hub of clients,
 // the topic manager, the websocket upgrader, and a map of all the handlers
@@ -97,11 +75,12 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager
 	s.registerHandler("get", s.getHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("registerTopic", s.registerTopicHandler, s.metricsDecorator, s.requireDataDecorator, s.requireTopicDecorator)
 	s.registerHandler("unregisterTopic", s.unregisterTopicHandler, s.metricsDecorator, s.requireTopicDecorator)
+	s.registerHandler("listTopics", s.listTopics, s.metricsDecorator) // no required topcs
 
 	/*
 		FUTURE HANDLERS
 		s.registerHandler("list", s.list, s.requireTopic)
-		s.registerHandler("publishMan", s.getHandler, s.requireTopic)
+		s.registerHandler("publishMany", s.getHandler, s.requireTopic)
 		s.registerHandler("sendWithoutSave", s.registerTopicHandler, s.requireTopic, s.requireData)
 		s.registerHandler("deleteManyTopics", s.unregisterTopicHandler, s.requireTopic)
 		s.registerHandler("listWithPattern", s.unregisterTopicHandler, s.requireTopic)
@@ -137,8 +116,6 @@ func (s *WebSocketServer) authToken(token string) bool {
 // and each client will get their own handleWebSocket handler.
 func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
-	// TODO: authenticate client
-	// --- AUTH STEP BEFORE UPGRADE ---
 	// generate a new UUID for this connection
 	clientID := uuid.NewString()
 
@@ -169,7 +146,7 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	defer s.hub.RemoveClient(client)
 
 	for {
-		var msg WebSocketMessage
+		var msg network.WebSocketMessage
 		if err := conn.ReadJSON(&msg); err != nil { // blocks until can read message
 			if !s.handleWebSocketError(err, client) { // returns bool if client is ok
 				// if we aren't ok, disconnect from this loser
@@ -182,7 +159,7 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 }
 
 // RouteMessage will take the action from a WebSocketMessage and determine which handler should take care of the logic.
-func (s *WebSocketServer) RouteMessage(client *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) RouteMessage(client *network.Client, msg network.WebSocketMessage) {
 	log.Debugf("Routing incoming message from client: %s for action: %s", client.Id, msg.Action)
 	if handler, ok := s.handlers[msg.Action]; ok {
 		handler(client, msg)
@@ -217,7 +194,7 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 	var syntaxErr *json.SyntaxError
 	if errors.As(err, &syntaxErr) {
 		ctx.WithField("offset", syntaxErr.Offset).Error("JSON syntax error")
-		s.SendToClient(client, Response{
+		s.SendToClient(client, network.Response{
 			Id:   "UNKNOWN",
 			Type: "UNKOWN",
 			Code: http.StatusBadRequest,
@@ -233,7 +210,7 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 			"offset":   typeErr.Offset,
 		}).Error("JSON type error")
 
-		s.SendToClient(client, Response{
+		s.SendToClient(client, network.Response{
 			Id:   "UNKNOWN",
 			Type: "UNKOWN",
 			Code: http.StatusBadRequest,

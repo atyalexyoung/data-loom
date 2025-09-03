@@ -21,10 +21,10 @@ func parseJSON[T any](data json.RawMessage) (T, error) {
 }
 
 // AckResponseSuccess with handle logging and responding to client if action was successful
-func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg network.WebSocketMessage) {
 	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.Id)
 	if msg.RequireAck {
-		s.SendToClient(c, Response{
+		s.SendToClient(c, network.Response{
 			Id:   msg.Id,
 			Type: msg.Action,
 			Code: http.StatusOK,
@@ -34,9 +34,9 @@ func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg WebSocketMes
 }
 
 // AckResponseData will handle logging and response with data to client.
-func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg WebSocketMessage, data interface{}) {
+func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg network.WebSocketMessage, data any) {
 	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.Id)
-	s.SendToClient(c, Response{
+	s.SendToClient(c, network.Response{
 		Id:   msg.Id,
 		Type: msg.Action,
 		Code: http.StatusOK,
@@ -46,9 +46,9 @@ func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg WebS
 }
 
 // AckResponseError will handle logging and creating response to the client if an error has occured
-func (s *WebSocketServer) AckResponseError(c *network.Client, msg WebSocketMessage, err error) {
+func (s *WebSocketServer) AckResponseError(c *network.Client, msg network.WebSocketMessage, err error) {
 	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
-	s.SendToClient(c, Response{
+	s.SendToClient(c, network.Response{
 		Id:      msg.Id,
 		Type:    msg.Action,
 		Code:    http.StatusInternalServerError,
@@ -74,7 +74,7 @@ func (s *WebSocketServer) registerHandler(action string, handler HandlerFunc, de
 
 // subscribeHandler handles subscription request, error handling from trying to subscribe
 // and response to the client.
-func (s *WebSocketServer) subscribeHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) subscribeHandler(c *network.Client, msg network.WebSocketMessage) {
 	if err := s.topicManager.Subscribe(msg.Topic, c); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
@@ -84,7 +84,7 @@ func (s *WebSocketServer) subscribeHandler(c *network.Client, msg WebSocketMessa
 
 // publishHandler handles getting the request to publish from a client, error handling
 // from trying to publish, and response to the sending client.
-func (s *WebSocketServer) publishHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocketMessage) {
 	if err := s.topicManager.Publish(msg.Topic, c, msg.Data); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
@@ -94,7 +94,7 @@ func (s *WebSocketServer) publishHandler(c *network.Client, msg WebSocketMessage
 
 // unsubscribeHandler handles request to unsubscribe, error handling from topic manager doing work,
 // and sending response to the requesting client.
-func (s *WebSocketServer) unsubscribeHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) unsubscribeHandler(c *network.Client, msg network.WebSocketMessage) {
 	if err := s.topicManager.Unsubscribe(msg.Topic, c); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
@@ -104,14 +104,14 @@ func (s *WebSocketServer) unsubscribeHandler(c *network.Client, msg WebSocketMes
 
 // unsubscribAllHandler handles the request from client to unsubscribe from all topics,
 // and sending respone to the requesting client.
-func (s *WebSocketServer) unsubscribeAllHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) unsubscribeAllHandler(c *network.Client, msg network.WebSocketMessage) {
 	s.topicManager.UnsubscribeAll(c)
 	s.AckResponseSuccess(c, msg)
 }
 
 // getHandler handles a request to get a topic value, errors from topic manager, and
 // sending response to requesting client.
-func (s *WebSocketServer) getHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) getHandler(c *network.Client, msg network.WebSocketMessage) {
 	if data, err := s.topicManager.Get(msg.Topic); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
@@ -121,7 +121,7 @@ func (s *WebSocketServer) getHandler(c *network.Client, msg WebSocketMessage) {
 
 // registerTopicHandler handles a request to register a topic, error from topic manager from
 // operation, and sending response to the requesting client.
-func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg network.WebSocketMessage) {
 	// get schema from message
 	schema, err := parseJSON[map[string]any](msg.Data)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg WebSocketM
 
 // unregisterTopicHandler handles request from client to unregister a topic, error from topic
 // manager doing work, and responding to the requesting client.
-func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg network.WebSocketMessage) {
 	if err := s.topicManager.UnregisterTopic(msg.Topic); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
@@ -147,8 +147,36 @@ func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg WebSocke
 	}
 }
 
-func (s *WebSocketServer) listTopics(c *network.Client, msg WebSocketMessage) {
+func (s *WebSocketServer) listTopics(c *network.Client, msg network.WebSocketMessage) {
 
+	topics, err := s.topicManager.ListTopics()
+	if err != nil {
+		s.AckResponseError(c, msg, err)
+		return
+	}
+
+	// get responses from topics
+	var response []network.TopicResponse
+	for _, topic := range topics {
+
+		// get schema from topic
+		var schemaResponse network.TopicSchemaResponse
+		if schema, err := topic.GetLatestSchema(); err != nil {
+			log.Errorf("Error when getting schema for topic: %s when getting list of topics.", topic.Name())
+		} else if schema != nil {
+			schemaResponse = network.TopicSchemaResponse{
+				Version: schema.Version,
+				Schema:  schema.Schema,
+			}
+		}
+
+		response = append(response, network.TopicResponse{
+			Name:   topic.Name(),
+			Schema: schemaResponse,
+		})
+	}
+
+	s.AckResponseSuccessWithData(c, msg, response)
 }
 
 /*

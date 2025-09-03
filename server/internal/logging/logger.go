@@ -56,7 +56,7 @@ func HandlerAck(clientId string, action string, topic string, messageId string) 
 }
 
 // Logs that an acknowledgment was sent
-func HandlerAckWithData(clientId string, action string, topic string, messageId string, data interface{}) {
+func HandlerAckWithData(clientId string, action string, topic string, messageId string, data any) {
 	log.WithFields(log.Fields{
 		"client_id": clientId,
 		"action":    action,

@@ -2,8 +2,9 @@ package topic
 
 import (
 	"fmt"
-	"log"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/atyalexyoung/data-loom/server/internal/network"
 	"github.com/atyalexyoung/data-loom/server/internal/storage"
@@ -19,7 +20,7 @@ type TopicManager struct {
 
 type TopicSchema struct {
 	Version int
-	Schema  map[string]interface{}
+	Schema  map[string]any
 }
 
 func NewTopicManager(storage storage.Storage) *TopicManager {
@@ -72,39 +73,43 @@ func (tm *TopicManager) UnsubscribeAll(client *network.Client) {
 	for _, topic := range tm.topics {
 		err := topic.Unsubscribe(client)
 		if err == nil { // if we get error, the client wasn't subscribed to topic
-			log.Printf("Unsubscribed client: %s from topic: %s", client.Id, topic.Name)
+			log.Printf("Unsubscribed client: %s from topic: %s", client.Id, topic.Name())
 		}
 	}
 }
 
 // Publish will send the JSON of the message to all clients subscribed to the topic
 func (tm *TopicManager) Publish(topicName string, sender *network.Client, value []byte) error {
+
+	// get topic from tm and unlock
 	tm.mu.Lock()
 	topic, ok := tm.topics[topicName]
 	tm.mu.Unlock()
 
-	if !ok {
+	if !ok { // couldn't get topic, I guess it doesn't exist
 		return fmt.Errorf("publish failed. Topic doesn't exist. Topic: %s", topicName)
 	}
 
+	// get the subscribers to send to and unlock the topic
 	topic.mu.Lock()
-	defer topic.mu.Unlock()
+	subsribers := make([]*network.Client, 0, len(topic.subscribers))
+	for client := range topic.subscribers {
+		if client != sender {
+			subsribers = append(subsribers, client)
+		}
+	}
+	topic.mu.Unlock()
 
-	//topic.value = value
-	tm.db.Put(topicName, value)
+	tm.db.Put(topicName, value) // persist to db, let them worry about async or anything like that
 
 	// publish to all subscribers
-	for client := range topic.Subscribers {
-		if client != sender {
-			err := client.SendJSON(value)
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					go tm.UnsubscribeAll(client)
-				}
-
-				// TODO: add failure count to client failure
-				log.Println("Error when writing json to client: ", client.Id)
+	for _, client := range subsribers {
+		if err := client.SendJSON(value); err != nil {
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				go tm.UnsubscribeAll(client)
 			}
+			// TODO: add failure count to client failure
+			log.Println("Error when writing json to client: ", client.Id)
 		}
 	}
 	return nil
@@ -120,10 +125,7 @@ func (tm *TopicManager) Get(topicName string) ([]byte, error) {
 		return nil, fmt.Errorf("couldn't get value for topic. topic doesn't exist. topic: %s", topicName)
 	}
 
-	topic.mu.RLock()
-	defer topic.mu.RUnlock()
-
-	value, err := tm.db.Get(topic.Name)
+	value, err := tm.db.Get(topic.Name())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get value for topic with error: %v", err)
 	}
@@ -140,22 +142,10 @@ func (tm *TopicManager) RegisterTopic(topicName string, schema map[string]any) (
 	if ok { // if we get a topic, it already exists
 		return nil, fmt.Errorf("cannot register topic. topic already exists. consider updating topic")
 	}
+	topic := NewTopic(topicName, schema)
 
-	topic := &Topic{ // create the new topic reference
-		Name:        topicName,
-		Subscribers: make(map[*network.Client]bool),
-		Schemas:     make(map[int]*TopicSchema),
-		// value: nil, leave as default
-		// LatestSchema: 0, leave as default
-	}
-
-	topic.Schemas[0] = &TopicSchema{ // create new schema and add it to map
-		Version: 0,
-		Schema:  schema,
-	}
-
-	// add new schema to topic manager
-	tm.topics[topic.Name] = topic
+	// add new topic to topic manager
+	tm.topics[topic.Name()] = topic
 
 	return topic, nil
 }
@@ -171,11 +161,26 @@ func (tm *TopicManager) UnregisterTopic(topicName string) error {
 		return fmt.Errorf("cannot unregister topic. topic doesn't exist with name: %s", topicName)
 	}
 
-	delete(tm.topics, topicName)
+	delete(tm.topics, topicName) // delete the key-value in the map
 
 	if err := tm.db.Delete(topicName); err != nil {
 		return fmt.Errorf("Topic deleted but unable to delete from persistent storage with err: %v", err)
 	}
 
 	return nil
+}
+
+// Will return a slice of Topic Responses
+func (tm *TopicManager) ListTopics() ([]*Topic, error) {
+
+	// get topics copy and unlock manager
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	topicsCopy := make([]*Topic, 0, len(tm.topics))
+	for _, t := range tm.topics {
+		topicsCopy = append(topicsCopy, t)
+	}
+
+	return topicsCopy, nil
 }
