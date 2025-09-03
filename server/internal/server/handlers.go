@@ -147,7 +147,10 @@ func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg network.
 	}
 }
 
-func (s *WebSocketServer) listTopics(c *network.Client, msg network.WebSocketMessage) {
+// listToipicsHandler handles request from client to get a list of users, error from topic manager
+// and translating slice of topics into a list of Topic Responses from topic manager,
+// and sending response to the client.
+func (s *WebSocketServer) listTopicsHandler(c *network.Client, msg network.WebSocketMessage) {
 
 	topics, err := s.topicManager.ListTopics()
 	if err != nil {
@@ -181,7 +184,6 @@ func (s *WebSocketServer) listTopics(c *network.Client, msg network.WebSocketMes
 
 /*
 	/* FUTURE HANDLERS
-	"list": s.TopicManager.ListTopics(),
 	"publishMany": s.TopicManager.SetManyTopics(),
 	"sendWithoutSave": s.TopicManager.SendWithoutSave(),
 	"deleteManyTopics": s.TopicManager.DeleteManyTopics(),

@@ -170,7 +170,7 @@ func (tm *TopicManager) UnregisterTopic(topicName string) error {
 	return nil
 }
 
-// Will return a slice of Topic Responses
+// ListTopics will retreive all topics that are currently being used.
 func (tm *TopicManager) ListTopics() ([]*Topic, error) {
 
 	// get topics copy and unlock manager

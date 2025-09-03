@@ -75,7 +75,7 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager
 	s.registerHandler("get", s.getHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("registerTopic", s.registerTopicHandler, s.metricsDecorator, s.requireDataDecorator, s.requireTopicDecorator)
 	s.registerHandler("unregisterTopic", s.unregisterTopicHandler, s.metricsDecorator, s.requireTopicDecorator)
-	s.registerHandler("listTopics", s.listTopics, s.metricsDecorator) // no required topcs
+	s.registerHandler("listTopics", s.listTopicsHandler, s.metricsDecorator) // no required topcs
 
 	/*
 		FUTURE HANDLERS
