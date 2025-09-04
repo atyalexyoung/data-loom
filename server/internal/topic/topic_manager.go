@@ -8,14 +8,14 @@ import (
 
 	"github.com/atyalexyoung/data-loom/server/internal/network"
 	"github.com/atyalexyoung/data-loom/server/internal/storage"
-	"github.com/gorilla/websocket"
 )
 
 // TopicManager holds a map of the key for a key-value pair and the client that is subscribed to that key.
 type TopicManager struct {
-	mu     sync.RWMutex
-	topics map[string]*Topic
-	db     storage.Storage
+	mu            sync.RWMutex
+	topics        map[string]*Topic
+	db            storage.Storage
+	FailedClients chan *network.Client
 }
 
 type TopicSchema struct {
@@ -25,8 +25,9 @@ type TopicSchema struct {
 
 func NewTopicManager(storage storage.Storage) *TopicManager {
 	return &TopicManager{
-		topics: make(map[string]*Topic),
-		db:     storage,
+		topics:        make(map[string]*Topic),
+		db:            storage,
+		FailedClients: make(chan *network.Client, 100),
 	}
 }
 
@@ -78,41 +79,42 @@ func (tm *TopicManager) UnsubscribeAll(client *network.Client) {
 	}
 }
 
-// Publish will send the JSON of the message to all clients subscribed to the topic
-func (tm *TopicManager) Publish(topicName string, sender *network.Client, value []byte) error {
-
+// sendTopic will send the value passed in for a given topic to all the subscribers of that topic.
+func (tm *TopicManager) sendTopic(topicName string, sender *network.Client, value []byte, isOnlySend bool) error {
 	// get topic from tm and unlock
-	tm.mu.Lock()
+	tm.mu.RLock()
 	topic, ok := tm.topics[topicName]
-	tm.mu.Unlock()
+	tm.mu.RUnlock()
 
 	if !ok { // couldn't get topic, I guess it doesn't exist
 		return fmt.Errorf("publish failed. Topic doesn't exist. Topic: %s", topicName)
 	}
 
-	// get the subscribers to send to and unlock the topic
-	topic.mu.Lock()
-	subsribers := make([]*network.Client, 0, len(topic.subscribers))
-	for client := range topic.subscribers {
-		if client != sender {
-			subsribers = append(subsribers, client)
-		}
+	if !isOnlySend { // if it's supposed to be persisted, then persist
+		tm.db.Put(topicName, value)
 	}
-	topic.mu.Unlock()
 
-	tm.db.Put(topicName, value) // persist to db, let them worry about async or anything like that
+	failedClients := topic.Publish(sender, value)
 
-	// publish to all subscribers
-	for _, client := range subsribers {
-		if err := client.SendJSON(value); err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				go tm.UnsubscribeAll(client)
-			}
-			// TODO: add failure count to client failure
-			log.Println("Error when writing json to client: ", client.Id)
-		}
+	for _, client := range failedClients {
+		tm.MarkClientFailed(client)
 	}
 	return nil
+}
+
+// will increment the amount of failures for a client in the
+func (tm *TopicManager) MarkClientFailed(c *network.Client) {
+	tm.FailedClients <- c
+}
+
+// Publish will send the JSON of the message to all clients subscribed to the topic
+func (tm *TopicManager) Publish(topicName string, sender *network.Client, value []byte) error {
+	return tm.sendTopic(topicName, sender, value, false)
+}
+
+// SendWithoutSave will publish a value to a topic, but not persist that data to storage.
+func (tm *TopicManager) SendWithoutSave(topicName string, sender *network.Client, value []byte) error {
+	return tm.sendTopic(topicName, sender, value, true)
 }
 
 // Get will retrieve the current value for a given topic
@@ -183,4 +185,16 @@ func (tm *TopicManager) ListTopics() ([]*Topic, error) {
 	}
 
 	return topicsCopy, nil
+}
+
+func (tm *TopicManager) UpdateSchema(topicName string, schema map[string]any) error {
+	tm.mu.Lock()
+	topic, ok := tm.topics[topicName]
+	tm.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("Cannot update schema for topic %s. Topic doesn't exist", topicName)
+	}
+	topic.UpdateSchema(schema)
+	return nil
 }

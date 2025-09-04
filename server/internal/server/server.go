@@ -1,11 +1,15 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
+	"time"
+	timer "time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -15,6 +19,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	FAILED_MESSAGE_THRESHOLD = 3
+)
+
 // HandlerFunc is a function signature definition for all handlers of client requests.
 type HandlerFunc func(*network.Client, network.WebSocketMessage)
 
@@ -22,11 +30,13 @@ type HandlerFunc func(*network.Client, network.WebSocketMessage)
 // the topic manager, the websocket upgrader, and a map of all the handlers
 // for the various actions that clients can take.
 type WebSocketServer struct {
-	hub          *network.ClientHub
-	topicManager *topic.TopicManager
-	upgrader     websocket.Upgrader
-	handlers     map[string]HandlerFunc
-	config       Config
+	hub           *network.ClientHub
+	topicManager  *topic.TopicManager
+	upgrader      websocket.Upgrader
+	handlers      map[string]HandlerFunc
+	config        Config
+	failedClients map[*network.Client]int
+	mu            sync.RWMutex
 }
 
 type Config struct {
@@ -76,6 +86,8 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager
 	s.registerHandler("registerTopic", s.registerTopicHandler, s.metricsDecorator, s.requireDataDecorator, s.requireTopicDecorator)
 	s.registerHandler("unregisterTopic", s.unregisterTopicHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("listTopics", s.listTopicsHandler, s.metricsDecorator) // no required topcs
+	s.registerHandler("updateSchema", s.updateSchemaHandler, s.metricsDecorator, s.requireTopicDecorator, s.requireDataDecorator)
+	s.registerHandler("sendWithoutSave", s.sendWithoutSaveHandler, s.metricsDecorator, s.requireTopicDecorator, s.requireDataDecorator)
 
 	/*
 		FUTURE HANDLERS
@@ -90,6 +102,7 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager
 	return s
 }
 
+// Handler returns ta handler for the websocket connection to main
 func (s *WebSocketServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWebSocket)
@@ -100,13 +113,15 @@ func (s *WebSocketServer) Handler() http.Handler {
 func (s *WebSocketServer) SendToClient(c *network.Client, message any) {
 	if err := c.SendJSON(message); err != nil {
 		if !s.handleWebSocketError(err, c) {
-			// disconnect from this loser
+			// increment the disconnect with this dude.
+			s.failedClients[c]++
 		} else { // we good ig, just watch it
 
 		}
 	}
 }
 
+// Will authenticate the token that is passed with the configured API key
 func (s *WebSocketServer) authToken(token string) bool {
 	return token == s.config.APIKey
 }
@@ -155,6 +170,58 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		} else { // we all good
 			s.RouteMessage(client, msg)
 		}
+	}
+}
+
+// ListenForClientFailuresFromTopicManager will get clients that have
+// failed from the topic manager to be marked as failed by the server
+func (s *WebSocketServer) ListenForClientFailuresFromTopicManager() {
+	for client := range s.topicManager.FailedClients {
+		s.MarkClientFailed(client)
+	}
+}
+
+// MarkClientFailed will increment the client's failures.
+func (s *WebSocketServer) MarkClientFailed(c *network.Client) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failedClients[c]++
+}
+
+// StartClientCleanupCrew will start a goroutine that will periodically cleanup clients failing to communicate.
+func (s *WebSocketServer) StartClientCleanupCrew(ctx context.Context) {
+	go func() {
+		ticker := timer.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.cleanupFailedClients()
+			}
+		}
+	}()
+}
+
+// cleanupFailedClients will remove the clients that are failing to communicate.
+func (s *WebSocketServer) cleanupFailedClients() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	removals := make([]*network.Client, 0)
+
+	for client, numFails := range s.failedClients {
+		if numFails > FAILED_MESSAGE_THRESHOLD {
+			s.topicManager.UnsubscribeAll(client)
+			s.hub.RemoveClient(client)
+			removals = append(removals, client)
+		}
+	}
+
+	for _, client := range removals {
+		delete(s.failedClients, client)
 	}
 }
 

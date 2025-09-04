@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -26,19 +27,20 @@ func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 	}
 }
 
+// requireDataDecorator will verify that the message has a "Data" field, and that
+// it has some data in it.
 func (s *WebSocketServer) requireDataDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message data decorator.")
 	return func(c *network.Client, msg network.WebSocketMessage) {
-		if msg.Data == nil {
-			s.SendToClient(c, network.Response{
-				Id:      msg.Id,
-				Type:    msg.Action,
-				Code:    http.StatusBadRequest,
-				Message: "data was not supplied",
-			})
+		if msg.Data == nil { // check if null
+			s.AckResponseError(c, msg, fmt.Errorf("message data was null."))
 			return
 		}
-		next(c, msg)
+		if len(msg.Data) == 0 { // check if empty
+			s.AckResponseError(c, msg, fmt.Errorf("message data was empty."))
+			return
+		}
+		next(c, msg) // if we good, then move along.
 	}
 }
 

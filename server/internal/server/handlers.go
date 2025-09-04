@@ -182,6 +182,37 @@ func (s *WebSocketServer) listTopicsHandler(c *network.Client, msg network.WebSo
 	s.AckResponseSuccessWithData(c, msg, response)
 }
 
+// updateSchemaHandler handles request from client to update the schema for a topic,
+// converting the raw json to map[string]any for storage, and errors from
+// topic manager perfroming actions, and sending response to client.
+// msg.Data known to not be null here from decorators.
+func (s *WebSocketServer) updateSchemaHandler(c *network.Client, msg network.WebSocketMessage) {
+
+	// validate schema and get map
+	var newSchema map[string]any
+	if err := json.Unmarshal(msg.Data, &newSchema); err != nil {
+		s.AckResponseError(c, msg, err)
+		return
+	}
+
+	// update schema and respond
+	err := s.topicManager.UpdateSchema(msg.Topic, newSchema)
+	if err != nil {
+		s.AckResponseError(c, msg, err)
+		return
+	}
+
+	s.AckResponseSuccess(c, msg)
+}
+
+func (s *WebSocketServer) sendWithoutSaveHandler(c *network.Client, msg network.WebSocketMessage) {
+	if err := s.topicManager.Publish(msg.Topic, c, msg.Data); err != nil {
+		s.AckResponseError(c, msg, err)
+	} else {
+		s.AckResponseSuccess(c, msg)
+	}
+}
+
 /*
 	/* FUTURE HANDLERS
 	"publishMany": s.TopicManager.SetManyTopics(),
