@@ -82,6 +82,10 @@ func (tm *mockTopicManager) NextFailedClient() (*network.Client, bool) {
 	return tm.ClientResult, tm.BoolResult
 }
 
+func (tm *mockTopicManager) IsSchemaMatch(topicName string, schema map[string]any) (bool, error) {
+	return tm.BoolResult, tm.ErrorResult
+}
+
 //------------------------------------------------------------------------------ test server
 
 type testServer struct {

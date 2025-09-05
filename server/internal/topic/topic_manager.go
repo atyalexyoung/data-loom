@@ -24,6 +24,7 @@ type TopicManager interface {
 	ListTopics() ([]*Topic, error)
 	UpdateSchema(topicName string, schema map[string]any) error
 	NextFailedClient() (*network.Client, bool)
+	IsSchemaMatch(topicName string, schema map[string]any) (bool, error)
 }
 
 // topicManager holds a map of the key for a key-value pair and the client that is subscribed to that key.
@@ -163,7 +164,7 @@ func (tm *topicManager) RegisterTopic(topicName string, schema map[string]any) (
 			if schemasMatch(curretSchema.Schema, schema) {
 				return currentTopic, nil
 			} else { // schemas don't match, return error
-				return nil, fmt.Errorf("cannot register topic, topic already exists with different schema. Try updating schema.")
+				return nil, fmt.Errorf("cannot register topic, topic already exists with different schema. Try updating schema")
 			}
 		} // else we couldn't get the latest schema, update the current topics schema.
 		currentTopic.UpdateSchema(schema)
@@ -227,8 +228,38 @@ func (tm *topicManager) UpdateSchema(topicName string, schema map[string]any) er
 	tm.mu.Unlock()
 
 	if !ok {
-		return fmt.Errorf("Cannot update schema for topic %s. Topic doesn't exist", topicName)
+		return fmt.Errorf("cannot update schema for topic %s. Topic doesn't exist", topicName)
 	}
 	topic.UpdateSchema(schema)
 	return nil
+}
+
+func (tm *topicManager) getLatestSchemaForTopic(topicName string) (*TopicSchema, error) {
+	tm.mu.Lock()
+	topic, ok := tm.topics[topicName]
+	tm.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("could not get topic by name: %s", topicName)
+	}
+
+	schema, err := topic.GetLatestSchema()
+	if err != nil {
+		return nil, fmt.Errorf("could not get schema for topic with name: %s", topicName)
+	}
+
+	return schema, nil
+}
+
+func (tm *topicManager) IsSchemaMatch(topicName string, schema map[string]any) (bool, error) {
+
+	currentSchema, err := tm.getLatestSchemaForTopic(topicName)
+	if err != nil { // can't get this topic's schema, that's no good.
+		return false, err
+	}
+
+	if !schemasMatch(schema, currentSchema.Schema) { // schemas don't match, get with it yo
+		return false, fmt.Errorf("schema doesn't match topics current schema")
+	}
+
+	return true, nil
 }

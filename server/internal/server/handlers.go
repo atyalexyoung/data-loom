@@ -107,9 +107,15 @@ func (s *WebSocketServer) unsubscribeHandler(c *network.Client, msg network.WebS
 // from trying to publish, and response to the sending client.
 func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocketMessage) {
 
-	if msg.ParsedData == nil {
+	if msg.ParsedData == nil { // if no parsed data supplied, bad
 		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
 		return
+	}
+
+	// get the current schema for this topic
+	isMatch, err := s.topicManager.IsSchemaMatch(msg.Topic, msg.ParsedData)
+	if err != nil || !isMatch { // if we get an error, just blame it on client for now.
+		s.AckResponseBadRequest(c, msg, err)
 	}
 
 	if err := s.topicManager.Publish(msg.Topic, c, msg.ParsedData); err != nil {
@@ -222,6 +228,12 @@ func (s *WebSocketServer) sendWithoutSaveHandler(c *network.Client, msg network.
 	if msg.ParsedData == nil {
 		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
 		return
+	}
+
+	// get the current schema for this topic
+	isMatch, err := s.topicManager.IsSchemaMatch(msg.Topic, msg.ParsedData)
+	if err != nil || !isMatch { // if we get an error, just blame it on client for now.
+		s.AckResponseBadRequest(c, msg, err)
 	}
 
 	if err := s.topicManager.Publish(msg.Topic, c, msg.ParsedData); err != nil {
