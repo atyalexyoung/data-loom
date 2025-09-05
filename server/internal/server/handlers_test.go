@@ -191,6 +191,10 @@ func TestRegisterHandlerFailFromMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestSubscribeHandlerSuccess(t *testing.T){
+	
+}
+
 var registerTopicMessage = network.WebSocketMessage{
 	Id:         "registerTopicWithAck",
 	Action:     "registerTopic",

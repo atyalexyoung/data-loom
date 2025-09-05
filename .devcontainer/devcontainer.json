@@ -2,6 +2,7 @@
     "name": "data-loom dev container",
     "dockerFile": "Dockerfile",
     "context": "..",
+    "remoteUser": "vscode",
     "customizations": {
         "extensions": [
             "golang.go",
@@ -14,5 +15,8 @@
     },
     "forwardPorts": [
         50051
+    ],
+    "mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ]
 }
