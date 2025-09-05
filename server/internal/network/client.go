@@ -6,6 +6,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type ClientInterface interface {
+	SendJSON(message any) error
+}
+
 type Client struct {
 	Conn *websocket.Conn
 	Id   string

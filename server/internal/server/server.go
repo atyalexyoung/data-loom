@@ -23,6 +23,10 @@ const (
 	FAILED_MESSAGE_THRESHOLD = 3
 )
 
+type MessageSender interface {
+	SendToClient(c *network.Client, message any)
+}
+
 // HandlerFunc is a function signature definition for all handlers of client requests.
 type HandlerFunc func(*network.Client, network.WebSocketMessage)
 
@@ -30,8 +34,9 @@ type HandlerFunc func(*network.Client, network.WebSocketMessage)
 // the topic manager, the websocket upgrader, and a map of all the handlers
 // for the various actions that clients can take.
 type WebSocketServer struct {
+	sender        MessageSender
 	hub           *network.ClientHub
-	topicManager  *topic.TopicManager
+	topicManager  topic.TopicManager
 	upgrader      websocket.Upgrader
 	handlers      map[string]HandlerFunc
 	config        Config
@@ -60,7 +65,7 @@ func loadConfig() *Config {
 }
 
 // NewWebSocketServer will create and set up a WebSocketServer struct that is ready to use.
-func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager) *WebSocketServer {
+func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager) *WebSocketServer {
 	s := &WebSocketServer{
 		hub:          hub,
 		topicManager: topicManager,
@@ -70,6 +75,7 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager *topic.TopicManager
 			},
 		},
 	}
+	s.sender = s
 
 	loadConfig()
 
@@ -113,8 +119,7 @@ func (s *WebSocketServer) Handler() http.Handler {
 func (s *WebSocketServer) SendToClient(c *network.Client, message any) {
 	if err := c.SendJSON(message); err != nil {
 		if !s.handleWebSocketError(err, c) {
-			// increment the disconnect with this dude.
-			s.failedClients[c]++
+			s.MarkClientFailed(c)
 		} else { // we good ig, just watch it
 
 		}
@@ -176,7 +181,12 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 // ListenForClientFailuresFromTopicManager will get clients that have
 // failed from the topic manager to be marked as failed by the server
 func (s *WebSocketServer) ListenForClientFailuresFromTopicManager() {
-	for client := range s.topicManager.FailedClients {
+	for {
+		client, ok := s.topicManager.NextFailedClient()
+		if !ok {
+			// channel was closed, close loop
+			return
+		}
 		s.MarkClientFailed(client)
 	}
 }
@@ -261,7 +271,7 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 	var syntaxErr *json.SyntaxError
 	if errors.As(err, &syntaxErr) {
 		ctx.WithField("offset", syntaxErr.Offset).Error("JSON syntax error")
-		s.SendToClient(client, network.Response{
+		s.sender.SendToClient(client, network.Response{
 			Id:   "UNKNOWN",
 			Type: "UNKOWN",
 			Code: http.StatusBadRequest,
@@ -277,7 +287,7 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 			"offset":   typeErr.Offset,
 		}).Error("JSON type error")
 
-		s.SendToClient(client, network.Response{
+		s.sender.SendToClient(client, network.Response{
 			Id:   "UNKNOWN",
 			Type: "UNKOWN",
 			Code: http.StatusBadRequest,

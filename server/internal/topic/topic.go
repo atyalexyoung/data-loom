@@ -23,6 +23,14 @@ type Topic struct {
 	latestSchema int
 }
 
+// TopicSchema defines the data that is held to define a schema for a topic
+// version number is the current version for the schema and the Schema is
+// the json structure of the schema.
+type TopicSchema struct {
+	Version int
+	Schema  map[string]any
+}
+
 // NewTopic will intialize and return a ready to use Topic struct.
 func NewTopic(name string, schema map[string]any) *Topic {
 	topic := &Topic{
@@ -109,36 +117,32 @@ func (t *Topic) UpdateSchema(schema map[string]any) {
 func (t *Topic) GetLatestSchema() (*TopicSchema, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	schema, ok := t.schemas[t.latestSchema]
-	if !ok { // schema doesn't exist with latest schema number
-		if len(t.schemas) == 0 { // no schemas here, that's expected
-			return nil, fmt.Errorf("no schemas found for topic. update schema.")
-		} else { // schemas exist, but latest wasn't there, that's not good
-			// find the real latest
-			highest := 0
-			for version, _ := range t.schemas {
-				if version > highest {
-					version = highest
-				}
-			}
 
-			if highest == 0 {
-				t.latestSchema = 0 // set version to zero
-				return nil, fmt.Errorf("no schemas found. update schema")
-			} else { // highest wasn't the real highest I guess. Log it for now
+	// If no schemas exist at all
+	if len(t.schemas) == 0 {
+		return nil, fmt.Errorf("no schemas found for topic, update schema")
+	}
 
-				// TODO: do something about this
-				t.latestSchema = highest
-				schema, ok = t.schemas[t.latestSchema]
-				if !ok {
-					// TODO: clear out schema, something is very wrong.
-					return nil, fmt.Errorf("no schemas found. update schema")
-				}
-				return schema, nil
-			}
+	// Try the cached latest
+	if schema, ok := t.schemas[t.latestSchema]; ok {
+		return schema, nil
+	}
+
+	// If cached latest is wrong, find the real latest
+	highest := 0
+	for v := range t.schemas {
+		if v > highest {
+			highest = v
 		}
 	}
-	return schema, nil
+
+	t.latestSchema = highest
+	if schema, ok := t.schemas[highest]; ok {
+		return schema, nil
+	}
+
+	// This should never happen if len > 0
+	return nil, fmt.Errorf("schema map is corrupt, no latest schema found")
 }
 
 // GetSchemaByVersion will get the schema for the topic of the given version interger.

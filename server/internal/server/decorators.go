@@ -15,7 +15,7 @@ func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message topic decorator.")
 	return func(c *network.Client, msg network.WebSocketMessage) {
 		if len(strings.TrimSpace(msg.Topic)) == 0 {
-			s.SendToClient(c, network.Response{
+			s.sender.SendToClient(c, network.Response{
 				Id:      msg.Id,
 				Type:    msg.Action,
 				Code:    http.StatusBadRequest,

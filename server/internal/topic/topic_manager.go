@@ -1,6 +1,7 @@
 package topic
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -10,29 +11,49 @@ import (
 	"github.com/atyalexyoung/data-loom/server/internal/storage"
 )
 
-// TopicManager holds a map of the key for a key-value pair and the client that is subscribed to that key.
-type TopicManager struct {
+type TopicManager interface {
+	Subscribe(topicName string, client *network.Client) error
+	Unsubscribe(topicName string, client *network.Client) error
+	ListSubscribersForTopic(topicName string) ([]*network.Client, error)
+	UnsubscribeAll(client *network.Client)
+	Publish(topicName string, sender *network.Client, value []byte) error
+	SendWithoutSave(topicName string, sender *network.Client, value []byte) error
+	Get(topicName string) ([]byte, error)
+	RegisterTopic(topicName string, schema map[string]any) (*Topic, error)
+	UnregisterTopic(topicName string) error
+	ListTopics() ([]*Topic, error)
+	UpdateSchema(topicName string, schema map[string]any) error
+	NextFailedClient() (*network.Client, bool)
+}
+
+// topicManager holds a map of the key for a key-value pair and the client that is subscribed to that key.
+type topicManager struct {
 	mu            sync.RWMutex
 	topics        map[string]*Topic
 	db            storage.Storage
-	FailedClients chan *network.Client
+	failedClients chan *network.Client
 }
 
-type TopicSchema struct {
-	Version int
-	Schema  map[string]any
-}
-
-func NewTopicManager(storage storage.Storage) *TopicManager {
-	return &TopicManager{
+func NewTopicManager(storage storage.Storage) TopicManager {
+	return &topicManager{
 		topics:        make(map[string]*Topic),
 		db:            storage,
-		FailedClients: make(chan *network.Client, 100),
+		failedClients: make(chan *network.Client, 100),
 	}
 }
 
+func (tm *topicManager) NextFailedClient() (*network.Client, bool) {
+	client, ok := <-tm.failedClients
+	return client, ok
+}
+
+// will increment the amount of failures for a client in the
+func (tm *topicManager) markClientFailed(c *network.Client) {
+	tm.failedClients <- c
+}
+
 // Subscribe checks if the topic
-func (tm *TopicManager) Subscribe(topicName string, client *network.Client) error {
+func (tm *topicManager) Subscribe(topicName string, client *network.Client) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -46,7 +67,7 @@ func (tm *TopicManager) Subscribe(topicName string, client *network.Client) erro
 }
 
 // Unsubscribe removes a client from the subscription list for a given topic name.
-func (tm *TopicManager) Unsubscribe(topicName string, client *network.Client) error {
+func (tm *topicManager) Unsubscribe(topicName string, client *network.Client) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -58,7 +79,7 @@ func (tm *TopicManager) Unsubscribe(topicName string, client *network.Client) er
 }
 
 // ListSubscribersForTopic returns a copy of the list of all clients that are subscribed to a given topic name.
-func (tm *TopicManager) ListSubscribersForTopic(topicName string) ([]*network.Client, error) {
+func (tm *topicManager) ListSubscribersForTopic(topicName string) ([]*network.Client, error) {
 	topic, ok := tm.topics[topicName]
 	if !ok {
 		return nil, fmt.Errorf("cannot get subscribers for topic. topic doesn't exist. Topic: %s", topicName)
@@ -67,7 +88,7 @@ func (tm *TopicManager) ListSubscribersForTopic(topicName string) ([]*network.Cl
 }
 
 // UnsubscribeAll removes a client from all topics.
-func (tm *TopicManager) UnsubscribeAll(client *network.Client) {
+func (tm *topicManager) UnsubscribeAll(client *network.Client) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -80,7 +101,7 @@ func (tm *TopicManager) UnsubscribeAll(client *network.Client) {
 }
 
 // sendTopic will send the value passed in for a given topic to all the subscribers of that topic.
-func (tm *TopicManager) sendTopic(topicName string, sender *network.Client, value []byte, isOnlySend bool) error {
+func (tm *topicManager) sendTopic(topicName string, sender *network.Client, value []byte, isOnlySend bool) error {
 	// get topic from tm and unlock
 	tm.mu.RLock()
 	topic, ok := tm.topics[topicName]
@@ -97,28 +118,23 @@ func (tm *TopicManager) sendTopic(topicName string, sender *network.Client, valu
 	failedClients := topic.Publish(sender, value)
 
 	for _, client := range failedClients {
-		tm.MarkClientFailed(client)
+		tm.markClientFailed(client)
 	}
 	return nil
 }
 
-// will increment the amount of failures for a client in the
-func (tm *TopicManager) MarkClientFailed(c *network.Client) {
-	tm.FailedClients <- c
-}
-
 // Publish will send the JSON of the message to all clients subscribed to the topic
-func (tm *TopicManager) Publish(topicName string, sender *network.Client, value []byte) error {
+func (tm *topicManager) Publish(topicName string, sender *network.Client, value []byte) error {
 	return tm.sendTopic(topicName, sender, value, false)
 }
 
 // SendWithoutSave will publish a value to a topic, but not persist that data to storage.
-func (tm *TopicManager) SendWithoutSave(topicName string, sender *network.Client, value []byte) error {
+func (tm *topicManager) SendWithoutSave(topicName string, sender *network.Client, value []byte) error {
 	return tm.sendTopic(topicName, sender, value, true)
 }
 
 // Get will retrieve the current value for a given topic
-func (tm *TopicManager) Get(topicName string) ([]byte, error) {
+func (tm *topicManager) Get(topicName string) ([]byte, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -136,25 +152,43 @@ func (tm *TopicManager) Get(topicName string) ([]byte, error) {
 
 // RegisterTopic takes a topic name and schema for the topic and will add it to list of topics.
 // This will create a schema of version 0 for the topic. Returns error if the topic already exists
-func (tm *TopicManager) RegisterTopic(topicName string, schema map[string]any) (*Topic, error) {
+func (tm *topicManager) RegisterTopic(topicName string, schema map[string]any) (*Topic, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	_, ok := tm.topics[topicName]
+	currentTopic, ok := tm.topics[topicName]
 	if ok { // if we get a topic, it already exists
-		return nil, fmt.Errorf("cannot register topic. topic already exists. consider updating topic")
-	}
-	topic := NewTopic(topicName, schema)
+		curretSchema, err := currentTopic.GetLatestSchema()
+		if err == nil { // WE DID GET THE LATEST SCHEMA
+			if schemasMatch(curretSchema.Schema, schema) {
+				return currentTopic, nil
+			} else { // schemas don't match, return error
+				return nil, fmt.Errorf("cannot register topic, topic already exists with different schema. Try updating schema.")
+			}
+		} // else we couldn't get the latest schema, update the current topics schema.
+		currentTopic.UpdateSchema(schema)
+		return currentTopic, nil
 
-	// add new topic to topic manager
-	tm.topics[topic.Name()] = topic
+	} // else we didn't get a topic so create new one.
+	topic := NewTopic(topicName, schema)
+	tm.topics[topic.Name()] = topic // add new topic to topic manager
 
 	return topic, nil
 }
 
+// schemasMatch will convert two map[string]any tol json and compare them to see if they are the same.
+func schemasMatch(a, b map[string]any) bool {
+	aBytes, err1 := json.Marshal(a)
+	bBytes, err2 := json.Marshal(b)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return string(aBytes) == string(bBytes)
+}
+
 // UnregisterTopic takes name of topic to unregister and removes it from the topics.
 // returns error if topic doesn't exist.
-func (tm *TopicManager) UnregisterTopic(topicName string) error {
+func (tm *topicManager) UnregisterTopic(topicName string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -173,7 +207,7 @@ func (tm *TopicManager) UnregisterTopic(topicName string) error {
 }
 
 // ListTopics will retreive all topics that are currently being used.
-func (tm *TopicManager) ListTopics() ([]*Topic, error) {
+func (tm *topicManager) ListTopics() ([]*Topic, error) {
 
 	// get topics copy and unlock manager
 	tm.mu.Lock()
@@ -187,7 +221,7 @@ func (tm *TopicManager) ListTopics() ([]*Topic, error) {
 	return topicsCopy, nil
 }
 
-func (tm *TopicManager) UpdateSchema(topicName string, schema map[string]any) error {
+func (tm *topicManager) UpdateSchema(topicName string, schema map[string]any) error {
 	tm.mu.Lock()
 	topic, ok := tm.topics[topicName]
 	tm.mu.Unlock()

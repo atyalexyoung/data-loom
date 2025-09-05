@@ -24,7 +24,7 @@ func parseJSON[T any](data json.RawMessage) (T, error) {
 func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg network.WebSocketMessage) {
 	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.Id)
 	if msg.RequireAck {
-		s.SendToClient(c, network.Response{
+		s.sender.SendToClient(c, network.Response{
 			Id:   msg.Id,
 			Type: msg.Action,
 			Code: http.StatusOK,
@@ -36,7 +36,7 @@ func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg network.WebS
 // AckResponseData will handle logging and response with data to client.
 func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg network.WebSocketMessage, data any) {
 	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.Id)
-	s.SendToClient(c, network.Response{
+	s.sender.SendToClient(c, network.Response{
 		Id:   msg.Id,
 		Type: msg.Action,
 		Code: http.StatusOK,
@@ -48,7 +48,7 @@ func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg netw
 // AckResponseError will handle logging and creating response to the client if an error has occured
 func (s *WebSocketServer) AckResponseError(c *network.Client, msg network.WebSocketMessage, err error) {
 	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
-	s.SendToClient(c, network.Response{
+	s.sender.SendToClient(c, network.Response{
 		Id:      msg.Id,
 		Type:    msg.Action,
 		Code:    http.StatusInternalServerError,
