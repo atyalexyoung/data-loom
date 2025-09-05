@@ -158,7 +158,7 @@ func (t *Topic) GetSchemaByVersion(versionNumber int) (*TopicSchema, error) {
 	return schema, nil
 }
 
-func (t *Topic) Publish(sender *network.Client, value []byte) []*network.Client {
+func (t *Topic) Publish(sender *network.Client, value map[string]any) []*network.Client {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

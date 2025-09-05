@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"runtime"
@@ -56,6 +57,16 @@ func (s *WebSocketServer) AckResponseError(c *network.Client, msg network.WebSoc
 	})
 }
 
+func (s *WebSocketServer) AckResponseBadRequest(c *network.Client, msg network.WebSocketMessage, err error) {
+	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
+	s.sender.SendToClient(c, network.Response{
+		Id:      msg.Id,
+		Type:    msg.Action,
+		Code:    http.StatusBadRequest,
+		Message: err.Error(),
+	})
+}
+
 // Will register a handler with the action string as the lookup for the handler,
 // the handler function, and any number of decorators to wrap the handler. Note: The decorators
 // are ran right to left in order. In other words, the left-most decorator is the "inner-most"
@@ -82,20 +93,26 @@ func (s *WebSocketServer) subscribeHandler(c *network.Client, msg network.WebSoc
 	}
 }
 
-// publishHandler handles getting the request to publish from a client, error handling
-// from trying to publish, and response to the sending client.
-func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocketMessage) {
-	if err := s.topicManager.Publish(msg.Topic, c, msg.Data); err != nil {
+// unsubscribeHandler handles request to unsubscribe, error handling from topic manager doing work,
+// and sending response to the requesting client.
+func (s *WebSocketServer) unsubscribeHandler(c *network.Client, msg network.WebSocketMessage) {
+	if err := s.topicManager.Unsubscribe(msg.Topic, c); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)
 	}
 }
 
-// unsubscribeHandler handles request to unsubscribe, error handling from topic manager doing work,
-// and sending response to the requesting client.
-func (s *WebSocketServer) unsubscribeHandler(c *network.Client, msg network.WebSocketMessage) {
-	if err := s.topicManager.Unsubscribe(msg.Topic, c); err != nil {
+// publishHandler handles getting the request to publish from a client, error handling
+// from trying to publish, and response to the sending client.
+func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocketMessage) {
+
+	if msg.ParsedData == nil {
+		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
+		return
+	}
+
+	if err := s.topicManager.Publish(msg.Topic, c, msg.ParsedData); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)
@@ -123,13 +140,12 @@ func (s *WebSocketServer) getHandler(c *network.Client, msg network.WebSocketMes
 // operation, and sending response to the requesting client.
 func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg network.WebSocketMessage) {
 	// get schema from message
-	schema, err := parseJSON[map[string]any](msg.Data)
-	if err != nil {
-		s.AckResponseError(c, msg, err)
+	if msg.ParsedData == nil {
+		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
 		return
 	}
 
-	topic, err := s.topicManager.RegisterTopic(msg.Topic, schema)
+	topic, err := s.topicManager.RegisterTopic(msg.Topic, msg.ParsedData)
 	if err != nil {
 		s.AckResponseError(c, msg, err)
 	} else if msg.RequireAck { // explicit check for requireAck since response with data doesn't
@@ -183,20 +199,15 @@ func (s *WebSocketServer) listTopicsHandler(c *network.Client, msg network.WebSo
 }
 
 // updateSchemaHandler handles request from client to update the schema for a topic,
-// converting the raw json to map[string]any for storage, and errors from
+// verifying parsed data, and errors from
 // topic manager perfroming actions, and sending response to client.
-// msg.Data known to not be null here from decorators.
 func (s *WebSocketServer) updateSchemaHandler(c *network.Client, msg network.WebSocketMessage) {
-
-	// validate schema and get map
-	var newSchema map[string]any
-	if err := json.Unmarshal(msg.Data, &newSchema); err != nil {
-		s.AckResponseError(c, msg, err)
+	if msg.ParsedData == nil {
+		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
 		return
 	}
 
-	// update schema and respond
-	err := s.topicManager.UpdateSchema(msg.Topic, newSchema)
+	err := s.topicManager.UpdateSchema(msg.Topic, msg.ParsedData)
 	if err != nil {
 		s.AckResponseError(c, msg, err)
 		return
@@ -205,8 +216,15 @@ func (s *WebSocketServer) updateSchemaHandler(c *network.Client, msg network.Web
 	s.AckResponseSuccess(c, msg)
 }
 
+// sendWithoutSaveHandler handles request from client to publish a message without persisting it to
+// database, handles verifying parsed data, error from topic manager, and sending response to client.
 func (s *WebSocketServer) sendWithoutSaveHandler(c *network.Client, msg network.WebSocketMessage) {
-	if err := s.topicManager.Publish(msg.Topic, c, msg.Data); err != nil {
+	if msg.ParsedData == nil {
+		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
+		return
+	}
+
+	if err := s.topicManager.Publish(msg.Topic, c, msg.ParsedData); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)

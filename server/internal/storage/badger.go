@@ -13,7 +13,7 @@ func (s *BadgerStorage) Close() error {
 }
 
 // Put will set a key to a value that is passed in.
-func (s *BadgerStorage) Put(key string, value []byte) error {
+func (s *BadgerStorage) Put(key string, value map[string]any) error {
 	return nil
 }
 

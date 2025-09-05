@@ -16,8 +16,8 @@ type TopicManager interface {
 	Unsubscribe(topicName string, client *network.Client) error
 	ListSubscribersForTopic(topicName string) ([]*network.Client, error)
 	UnsubscribeAll(client *network.Client)
-	Publish(topicName string, sender *network.Client, value []byte) error
-	SendWithoutSave(topicName string, sender *network.Client, value []byte) error
+	Publish(topicName string, sender *network.Client, value map[string]any) error
+	SendWithoutSave(topicName string, sender *network.Client, value map[string]any) error
 	Get(topicName string) ([]byte, error)
 	RegisterTopic(topicName string, schema map[string]any) (*Topic, error)
 	UnregisterTopic(topicName string) error
@@ -101,7 +101,7 @@ func (tm *topicManager) UnsubscribeAll(client *network.Client) {
 }
 
 // sendTopic will send the value passed in for a given topic to all the subscribers of that topic.
-func (tm *topicManager) sendTopic(topicName string, sender *network.Client, value []byte, isOnlySend bool) error {
+func (tm *topicManager) sendTopic(topicName string, sender *network.Client, value map[string]any, isOnlySend bool) error {
 	// get topic from tm and unlock
 	tm.mu.RLock()
 	topic, ok := tm.topics[topicName]
@@ -124,12 +124,12 @@ func (tm *topicManager) sendTopic(topicName string, sender *network.Client, valu
 }
 
 // Publish will send the JSON of the message to all clients subscribed to the topic
-func (tm *topicManager) Publish(topicName string, sender *network.Client, value []byte) error {
+func (tm *topicManager) Publish(topicName string, sender *network.Client, value map[string]any) error {
 	return tm.sendTopic(topicName, sender, value, false)
 }
 
 // SendWithoutSave will publish a value to a topic, but not persist that data to storage.
-func (tm *topicManager) SendWithoutSave(topicName string, sender *network.Client, value []byte) error {
+func (tm *topicManager) SendWithoutSave(topicName string, sender *network.Client, value map[string]any) error {
 	return tm.sendTopic(topicName, sender, value, true)
 }
 

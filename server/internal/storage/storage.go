@@ -14,7 +14,7 @@ type Storage interface {
 	Close() error
 
 	// Put will set a key to a value that is passed in.
-	Put(key string, value []byte) error
+	Put(key string, value map[string]any) error
 
 	// Get will retrieve the value of the supplied key
 	Get(key string) ([]byte, error)

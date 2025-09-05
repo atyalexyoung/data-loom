@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"time"
-	timer "time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -201,7 +200,7 @@ func (s *WebSocketServer) MarkClientFailed(c *network.Client) {
 // StartClientCleanupCrew will start a goroutine that will periodically cleanup clients failing to communicate.
 func (s *WebSocketServer) StartClientCleanupCrew(ctx context.Context) {
 	go func() {
-		ticker := timer.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 
 		for {

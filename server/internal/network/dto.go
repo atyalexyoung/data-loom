@@ -13,6 +13,7 @@ type WebSocketMessage struct {
 	Topic      string          `json:"topic,omitempty"`
 	Data       json.RawMessage `json:"data,omitempty"`
 	RequireAck bool            `json:"requireAck,omitempty"`
+	ParsedData map[string]any  `json:"-"`
 }
 
 // Response struct is a response that is sent back to a client from the server.

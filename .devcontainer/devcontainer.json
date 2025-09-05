@@ -4,10 +4,12 @@
     "context": "..",
     "remoteUser": "vscode",
     "customizations": {
-        "extensions": [
-            "golang.go",
-            "ms-azuretools.vscode-docker"
-        ],
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "ms-azuretools.vscode-docker"
+            ]
+        },
         "settings": {
             "go.gopath": "/go",
             "go.useLanguageServer": true

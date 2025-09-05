@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,12 +14,7 @@ func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message topic decorator.")
 	return func(c *network.Client, msg network.WebSocketMessage) {
 		if len(strings.TrimSpace(msg.Topic)) == 0 {
-			s.sender.SendToClient(c, network.Response{
-				Id:      msg.Id,
-				Type:    msg.Action,
-				Code:    http.StatusBadRequest,
-				Message: "topic was null or empty",
-			})
+			s.AckResponseBadRequest(c, msg, fmt.Errorf("no topic provided"))
 			return
 		}
 		next(c, msg)
@@ -33,13 +27,20 @@ func (s *WebSocketServer) requireDataDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message data decorator.")
 	return func(c *network.Client, msg network.WebSocketMessage) {
 		if msg.Data == nil { // check if null
-			s.AckResponseError(c, msg, fmt.Errorf("message data was null."))
+			s.AckResponseBadRequest(c, msg, fmt.Errorf("message data was null"))
 			return
 		}
 		if len(msg.Data) == 0 { // check if empty
-			s.AckResponseError(c, msg, fmt.Errorf("message data was empty."))
+			s.AckResponseBadRequest(c, msg, fmt.Errorf("message data was empty"))
 			return
 		}
+		payload, err := parseJSON[map[string]any](msg.Data)
+		if err != nil {
+			s.AckResponseBadRequest(c, msg, err)
+			return
+		}
+		msg.ParsedData = payload
+
 		next(c, msg) // if we good, then move along.
 	}
 }
