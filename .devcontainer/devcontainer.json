@@ -19,6 +19,9 @@
         50051
     ],
     "mounts": [
-        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+        // Linux & macOS
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+        // Windows
+        "source=${localEnv:USERPROFILE}\\.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ]
 }
