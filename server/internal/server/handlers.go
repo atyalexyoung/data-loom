@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"reflect"
 	"runtime"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -67,6 +68,16 @@ func (s *WebSocketServer) AckResponseBadRequest(c *network.Client, msg network.W
 	})
 }
 
+func (s *WebSocketServer) AckResponseDatabaseError(c *network.Client, msg network.WebSocketMessage, err error) {
+	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
+	s.sender.SendToClient(c, network.Response{
+		Id:      msg.Id,
+		Type:    "persist",
+		Code:    http.StatusInternalServerError,
+		Message: err.Error(),
+	})
+}
+
 // Will register a handler with the action string as the lookup for the handler,
 // the handler function, and any number of decorators to wrap the handler. Note: The decorators
 // are ran right to left in order. In other words, the left-most decorator is the "inner-most"
@@ -74,7 +85,7 @@ func (s *WebSocketServer) AckResponseBadRequest(c *network.Client, msg network.W
 func (s *WebSocketServer) registerHandler(action string, handler HandlerFunc, decorators ...func(HandlerFunc) HandlerFunc) {
 	// gets the name using reflection to log that the handler was registered
 	name := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
-	log.Infof("Registering handler for action=%s, function=%s", action, name)
+	log.Tracef("Registering handler for action=%s, function=%s", action, name)
 
 	final := handler
 	for _, dec := range decorators {
@@ -118,7 +129,23 @@ func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocke
 		s.AckResponseBadRequest(c, msg, err)
 	}
 
-	if err := s.topicManager.Publish(msg.Topic, c, msg.ParsedData); err != nil {
+	errCh := make(chan error, 1)
+	go func() {
+		select {
+		case err := <-errCh:
+			if err != nil {
+				s.AckResponseDatabaseError(c, msg, err)
+			}
+		case <-time.After(2 * time.Second):
+			log.WithFields(log.Fields{
+				"topic":  msg.Topic,
+				"client": c.Id,
+			}).Warnf("DB write timeout for topic: %s, client: %s", msg.Topic, c.Id)
+			s.AckResponseDatabaseError(c, msg, fmt.Errorf("timeout when persisting"))
+		}
+	}()
+
+	if err := s.topicManager.Publish(msg, c, msg.ParsedData, errCh); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)
@@ -236,7 +263,14 @@ func (s *WebSocketServer) sendWithoutSaveHandler(c *network.Client, msg network.
 		s.AckResponseBadRequest(c, msg, err)
 	}
 
-	if err := s.topicManager.Publish(msg.Topic, c, msg.ParsedData); err != nil {
+	errCh := make(chan error, 1)
+	go func() {
+		if err := <-errCh; err != nil {
+			s.AckResponseDatabaseError(c, msg, err)
+		}
+	}()
+
+	if err := s.topicManager.Publish(msg, c, msg.ParsedData, errCh); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)

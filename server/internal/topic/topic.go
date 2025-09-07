@@ -158,7 +158,7 @@ func (t *Topic) GetSchemaByVersion(versionNumber int) (*TopicSchema, error) {
 	return schema, nil
 }
 
-func (t *Topic) Publish(sender *network.Client, value map[string]any) []*network.Client {
+func (t *Topic) Publish(sender *network.Client, msg *network.WebSocketMessage) []*network.Client {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -166,7 +166,7 @@ func (t *Topic) Publish(sender *network.Client, value map[string]any) []*network
 
 	// publish to all subscribers
 	for client := range t.subscribers {
-		if err := client.SendJSON(value); err != nil {
+		if err := client.SendJSON(msg); err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				failedClients = append(failedClients, client)
 			}

@@ -2,7 +2,6 @@
     "name": "data-loom dev container",
     "dockerFile": "Dockerfile",
     "context": "..",
-    "remoteUser": "vscode",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -11,7 +10,7 @@
             ]
         },
         "settings": {
-            "go.gopath": "/go",
+            "go.gopath": "/home/vscode/go",
             "go.useLanguageServer": true
         }
     },
@@ -19,9 +18,8 @@
         50051
     ],
     "mounts": [
-        // Linux & macOS
+        // Mount SSH keys
         "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
-        // Windows
         "source=${localEnv:USERPROFILE}\\.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ]
 }

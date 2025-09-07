@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/atyalexyoung/data-loom/server/internal/config"
 	"github.com/atyalexyoung/data-loom/server/internal/network"
 	"github.com/atyalexyoung/data-loom/server/internal/topic"
 	"github.com/google/uuid"
@@ -38,33 +38,13 @@ type WebSocketServer struct {
 	topicManager  topic.TopicManager
 	upgrader      websocket.Upgrader
 	handlers      map[string]HandlerFunc
-	config        Config
+	config        *config.Config
 	failedClients map[*network.Client]int
 	mu            sync.RWMutex
 }
 
-type Config struct {
-	APIKey      string
-	StorageType string
-	StoragePath string
-}
-
-func loadConfig() *Config {
-	cfg := &Config{}
-
-	// Production: read from environment
-	if envKey := os.Getenv("MY_SERVER_KEY"); envKey != "" {
-		cfg.APIKey = envKey
-	} else {
-		// Development fallback
-		cfg.APIKey = "data-loom-api-key"
-	}
-
-	return cfg
-}
-
 // NewWebSocketServer will create and set up a WebSocketServer struct that is ready to use.
-func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager) *WebSocketServer {
+func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager, config *config.Config) *WebSocketServer {
 	s := &WebSocketServer{
 		hub:          hub,
 		topicManager: topicManager,
@@ -73,10 +53,10 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager)
 				return true
 			},
 		},
+		handlers: make(map[string]HandlerFunc),
+		config:   config,
 	}
 	s.sender = s
-
-	loadConfig()
 
 	// these handlers are set up with decorators for "middleware-like" functionality by
 	// wrapping the the inner-most handler with decorators for pre/post hooks for things
@@ -241,6 +221,7 @@ func (s *WebSocketServer) RouteMessage(client *network.Client, msg network.WebSo
 		handler(client, msg)
 	} else {
 		log.Warn("Unknown action: ", msg.Action)
+		s.AckResponseBadRequest(client, msg, fmt.Errorf("unknown action: %s", msg.Action))
 	}
 }
 

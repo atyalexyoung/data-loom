@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -16,9 +17,9 @@ type TopicManager interface {
 	Unsubscribe(topicName string, client *network.Client) error
 	ListSubscribersForTopic(topicName string) ([]*network.Client, error)
 	UnsubscribeAll(client *network.Client)
-	Publish(topicName string, sender *network.Client, value map[string]any) error
-	SendWithoutSave(topicName string, sender *network.Client, value map[string]any) error
-	Get(topicName string) ([]byte, error)
+	Publish(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error
+	SendWithoutSave(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error
+	Get(topicName string) (map[string]any, error)
 	RegisterTopic(topicName string, schema map[string]any) (*Topic, error)
 	UnregisterTopic(topicName string) error
 	ListTopics() ([]*Topic, error)
@@ -102,40 +103,70 @@ func (tm *topicManager) UnsubscribeAll(client *network.Client) {
 }
 
 // sendTopic will send the value passed in for a given topic to all the subscribers of that topic.
-func (tm *topicManager) sendTopic(topicName string, sender *network.Client, value map[string]any, isOnlySend bool) error {
+func (tm *topicManager) sendTopic(msg network.WebSocketMessage, sender *network.Client, value map[string]any, persist bool, errCh chan error) error {
 	// get topic from tm and unlock
 	tm.mu.RLock()
-	topic, ok := tm.topics[topicName]
+	topic, ok := tm.topics[msg.Topic]
 	tm.mu.RUnlock()
 
 	if !ok { // couldn't get topic, I guess it doesn't exist
-		return fmt.Errorf("publish failed. Topic doesn't exist. Topic: %s", topicName)
+		return fmt.Errorf("publish failed. Topic doesn't exist. Topic: %s", msg.Topic)
 	}
 
-	if !isOnlySend { // if it's supposed to be persisted, then persist
-		tm.db.Put(topicName, value)
+	var dbErrChan chan error
+	if persist { // if it's supposed to be persisted, then persist
+		dbErrChan = tm.db.AsyncPut(msg.Topic, value)
 	}
 
-	failedClients := topic.Publish(sender, value)
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("Could not marshal json data.")
+	}
+	outboundMessage := &network.WebSocketMessage{
+		Id:     msg.Id,
+		Action: msg.Action,
+		Topic:  msg.Topic,
+		Data:   raw,
+	}
+	failedClients := topic.Publish(sender, outboundMessage)
 
 	for _, client := range failedClients {
 		tm.markClientFailed(client)
 	}
+
+	// respond to client with errors if needed
+	if dbErrChan != nil && errCh != nil {
+		go func() {
+			defer close(errCh)
+
+			select {
+			case err := <-dbErrChan:
+				if err != nil {
+					errCh <- fmt.Errorf("database error: %w", err)
+				}
+			case <-time.After(2 * time.Second):
+				errCh <- fmt.Errorf("timeout waiting for database ack")
+			}
+		}()
+	} else if errCh != nil {
+		close(errCh) // if no persistence, just close
+	}
+
 	return nil
 }
 
 // Publish will send the JSON of the message to all clients subscribed to the topic
-func (tm *topicManager) Publish(topicName string, sender *network.Client, value map[string]any) error {
-	return tm.sendTopic(topicName, sender, value, false)
+func (tm *topicManager) Publish(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error {
+	return tm.sendTopic(msg, sender, value, true, errChan)
 }
 
 // SendWithoutSave will publish a value to a topic, but not persist that data to storage.
-func (tm *topicManager) SendWithoutSave(topicName string, sender *network.Client, value map[string]any) error {
-	return tm.sendTopic(topicName, sender, value, true)
+func (tm *topicManager) SendWithoutSave(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error {
+	return tm.sendTopic(msg, sender, value, false, errChan)
 }
 
 // Get will retrieve the current value for a given topic
-func (tm *topicManager) Get(topicName string) ([]byte, error) {
+func (tm *topicManager) Get(topicName string) (map[string]any, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -234,6 +265,7 @@ func (tm *topicManager) UpdateSchema(topicName string, schema map[string]any) er
 	return nil
 }
 
+// getLatestSchemaForTopic does what it says it will do. Gets the latest schema for a given topic.
 func (tm *topicManager) getLatestSchemaForTopic(topicName string) (*TopicSchema, error) {
 	tm.mu.Lock()
 	topic, ok := tm.topics[topicName]
@@ -250,6 +282,8 @@ func (tm *topicManager) getLatestSchemaForTopic(topicName string) (*TopicSchema,
 	return schema, nil
 }
 
+// IsSchemaMatch will compare the current schema for a topic and the schema passed in to check
+// if the schema matches the current schema
 func (tm *topicManager) IsSchemaMatch(topicName string, schema map[string]any) (bool, error) {
 
 	currentSchema, err := tm.getLatestSchemaForTopic(topicName)

@@ -21,6 +21,7 @@ type mockTopicManager struct {
 	TopicResult    *topic.Topic
 	TopicsResult   []*topic.Topic
 	BoolResult     bool
+	MapResult      map[string]any
 }
 
 func (tm *mockTopicManager) Subscribe(topicName string, client *network.Client) error {
@@ -43,19 +44,19 @@ func (tm *mockTopicManager) UnsubscribeAll(client *network.Client) {
 	tm.IsMethodCalled = true
 }
 
-func (tm *mockTopicManager) Publish(topicName string, sender *network.Client, value map[string]any) error {
+func (tm *mockTopicManager) Publish(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errCh chan error) error {
 	tm.IsMethodCalled = true
 	return tm.ErrorResult
 }
 
-func (tm *mockTopicManager) SendWithoutSave(topicName string, sender *network.Client, value map[string]any) error {
+func (tm *mockTopicManager) SendWithoutSave(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errCh chan error) error {
 	tm.IsMethodCalled = true
 	return tm.ErrorResult
 }
 
-func (tm *mockTopicManager) Get(topicName string) ([]byte, error) {
+func (tm *mockTopicManager) Get(topicName string) (map[string]any, error) {
 	tm.IsMethodCalled = true
-	return tm.BytesResult, tm.ErrorResult
+	return tm.MapResult, tm.ErrorResult
 }
 
 func (tm *mockTopicManager) RegisterTopic(topicName string, schema map[string]any) (*topic.Topic, error) {
