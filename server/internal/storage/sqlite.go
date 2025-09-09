@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -13,28 +12,41 @@ import (
 
 type SqliteStorage struct {
 	db         *sql.DB
-	writeQueue chan dbWriter
+	writeQueue chan dbWriteRequest
 	mu         sync.Mutex
 	closed     bool
 }
 
-func Open(path string, ctx context.Context) error {
-	db, err := sql.Open("sqlite", "./test.db")
+func (s *SqliteStorage) Open(path string, ctx context.Context) error {
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	sqlStmt := `
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-        name TEXT
-    );`
+		CREATE TABLE IF NOT EXISTS messages (
+			topicName TEXT NOT NULL,
+			timestamp INTEGER NOT NULL,
+			data BLOB NOT NULL,
+			PRIMARY KEY (topicName, timestamp)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_topicName ON messages(topicName);
+		CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+	`
 
 	_, err = db.Exec(sqlStmt)
 	if err != nil {
-		log.Fatal(err)
+		db.Close()
+		return err
 	}
 
+	s.startWriter(ctx) // now we open, start.
+
 	return nil
+}
+
+func (s *SqliteStorage) startWriter(ctx context.Context) {
+
 }
 
 // Close will handle closing and cleaning up database instance
@@ -54,18 +66,24 @@ func (s *SqliteStorage) Close() error {
 }
 
 // Put will set a key to a value that is passed in.
-func Put(key string, value map[string]any) error {
+func (s *SqliteStorage) put(ctx context.Context, key string, value map[string]any) error {
 
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	fmt.Println(data)
+
+	const insertStmt = `
+		INSERT INTO messages (topicName, timestamp, data)
+		VALUES (?, ?, ?)
+	`
+	_, err = s.db.ExecContext(ctx, insertStmt, topicName, timestamp, data)
+	return err
 
 	return nil
 }
 
-func (s *SqliteStorage) AsyncPut(key string, value map[string]any) chan error {
+func (s *SqliteStorage) AsyncPut(ctx context.Context, key string, value map[string]any) chan error {
 	ch := make(chan error, 1)
 
 	s.mu.Lock()
@@ -78,7 +96,7 @@ func (s *SqliteStorage) AsyncPut(key string, value map[string]any) chan error {
 	s.mu.Unlock()
 
 	select {
-	case s.writeQueue <- dbWriter{key: key, value: value, errCh: ch}:
+	case s.writeQueue <- dbWriteRequest{key: key, value: value, errCh: ch}:
 		// queued successfully
 	default:
 		ch <- fmt.Errorf("write queue is full")
@@ -88,13 +106,13 @@ func (s *SqliteStorage) AsyncPut(key string, value map[string]any) chan error {
 }
 
 // Get will retrieve the value of the supplied key
-func Get(key string) (map[string]any, error) {
+func Get(ctx context.Context, key string) (map[string]any, error) {
 	var result map[string]any
 
 	return result, nil
 }
 
 // Delete will delete a key, value pair from the database.
-func Delete(key string) error {
+func Delete(ctx context.Context, key string) error {
 	return nil
 }

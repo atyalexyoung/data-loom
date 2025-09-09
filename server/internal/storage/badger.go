@@ -14,20 +14,21 @@ import (
 
 type BadgerStorage struct {
 	database   *badger.DB
-	writeQueue chan dbWriter
+	writeQueue chan dbWriteRequest
 	mu         sync.Mutex
 	closed     bool
 }
 
-type dbWriter struct {
-	key   string
-	value map[string]any
-	errCh chan error
+type dbWriteRequest struct {
+	key      string
+	value    map[string]any
+	errCh    chan error
+	writeCtx context.Context
 }
 
 func NewBadgerStorage() *BadgerStorage {
 	return &BadgerStorage{
-		writeQueue: make(chan dbWriter, 5000),
+		writeQueue: make(chan dbWriteRequest, 5000),
 	}
 }
 
@@ -42,21 +43,34 @@ func (s *BadgerStorage) Open(path string, ctx context.Context) error {
 	return nil
 }
 
-func (s *BadgerStorage) startWriter(ctx context.Context) {
+func (store *BadgerStorage) startWriter(ctx context.Context) {
 	go func() {
 		for {
 			select {
-			case write, ok := <-s.writeQueue:
+			case writeReq, ok := <-store.writeQueue:
 				if !ok {
 					return // queue closed
 				}
-				err := s.Put(write.key, write.value)
-				if write.errCh != nil {
-					write.errCh <- err
-					log.Info("closing the write errCh")
-					close(write.errCh)
+
+				// doing this
+				select { // select context closed or proceed with write
+				// if context closed, write error and continue with loop
+				case <-writeReq.writeCtx.Done():
+					if writeReq.errCh != nil {
+						writeReq.errCh <- writeReq.writeCtx.Err()
+					}
+					continue
+				default: // no cancellation, continue with operation
 				}
-			case <-ctx.Done():
+
+				err := store.put(writeReq.key, writeReq.value)
+				if writeReq.errCh != nil { // does this chan exist?
+					writeReq.errCh <- err // give err to whoever sent this
+					log.Info("closing the write errCh")
+					close(writeReq.errCh)
+				}
+
+			case <-ctx.Done(): // if we get cancelled, stop the worker.
 				return
 			}
 		}
@@ -64,30 +78,30 @@ func (s *BadgerStorage) startWriter(ctx context.Context) {
 }
 
 // Close will handle closing and cleaning up database instance
-func (s *BadgerStorage) Close() error {
-	s.mu.Lock()
-	if !s.closed {
-		close(s.writeQueue)
-		s.closed = true
+func (store *BadgerStorage) Close() error {
+	store.mu.Lock()
+	if !store.closed {
+		close(store.writeQueue)
+		store.closed = true
 	}
-	s.mu.Unlock()
+	store.mu.Unlock()
 
-	if s.database != nil {
-		return s.database.Close()
+	if store.database != nil {
+		return store.database.Close()
 	}
 	return nil
 }
 
 // Put will set a key to a value that is passed in.
-func (s *BadgerStorage) Put(key string, value map[string]any) error {
+func (store *BadgerStorage) put(key string, value map[string]any) error {
 
-	data, err := json.Marshal(value)
+	byteData, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 
-	err = s.database.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(key), data)
+	err = store.database.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(key), byteData)
 	})
 	if err != nil {
 		return err
@@ -96,33 +110,36 @@ func (s *BadgerStorage) Put(key string, value map[string]any) error {
 	return nil
 }
 
-func (s *BadgerStorage) AsyncPut(key string, value map[string]any) chan error {
-	ch := make(chan error, 1)
+func (store *BadgerStorage) AsyncPut(ctx context.Context, key string, value map[string]any) chan error {
+	returnChannel := make(chan error, 1)
 
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		ch <- fmt.Errorf("storage is closed")
-		close(ch)
-		return ch
+	store.mu.Lock()
+	if store.closed {
+		store.mu.Unlock()
+		returnChannel <- fmt.Errorf("storage is closed")
+		close(returnChannel)
+		return returnChannel
 	}
-	s.mu.Unlock()
+	store.mu.Unlock()
 
 	select {
-	case s.writeQueue <- dbWriter{key: key, value: value, errCh: ch}:
+	case store.writeQueue <- dbWriteRequest{key: key, value: value, errCh: returnChannel, writeCtx: ctx}:
 		// queued successfully
+	case <-ctx.Done():
+		returnChannel <- ctx.Err()
+		close(returnChannel)
 	default:
-		ch <- fmt.Errorf("write queue is full")
-		close(ch)
+		returnChannel <- fmt.Errorf("write queue is full")
+		close(returnChannel)
 	}
-	return ch
+	return returnChannel
 }
 
 // Get will retrieve the value of the supplied key
-func (s *BadgerStorage) Get(key string) (map[string]any, error) {
+func (store *BadgerStorage) Get(ctx context.Context, key string) (map[string]any, error) {
 	var result map[string]any
 
-	err := s.database.View(func(txn *badger.Txn) error {
+	err := store.database.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key))
 		if err != nil {
 			return err
@@ -148,8 +165,8 @@ func (s *BadgerStorage) Get(key string) (map[string]any, error) {
 }
 
 // Delete will delete a key, value pair from the database.
-func (s *BadgerStorage) Delete(key string) error {
-	err := s.database.Update(func(txn *badger.Txn) error {
+func (store *BadgerStorage) Delete(ctx context.Context, key string) error {
+	err := store.database.Update(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(key))
 	})
 	if err != nil {

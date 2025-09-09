@@ -15,16 +15,14 @@ type Storage interface {
 	// Close will handle closing and cleaning up database instance
 	Close() error
 
-	// Put will set a key to a value that is passed in.
-	Put(key string, value map[string]any) error
-
-	AsyncPut(key string, value map[string]any) chan error
+	// AsyncPut will set a key to a value that is passed in.
+	AsyncPut(ctx context.Context, key string, value map[string]any) chan error
 
 	// Get will retrieve the value of the supplied key
-	Get(key string) (map[string]any, error)
+	Get(ctx context.Context, key string) (map[string]any, error)
 
 	// Delete will delete a key, value pair from the database.
-	Delete(key string) error
+	Delete(ctx context.Context, key string) error
 }
 
 // NewStorage takes the configuration and returns the storage type that is specified.
