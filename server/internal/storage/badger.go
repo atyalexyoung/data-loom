@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -17,13 +18,6 @@ type BadgerStorage struct {
 	writeQueue chan dbWriteRequest
 	mu         sync.Mutex
 	closed     bool
-}
-
-type dbWriteRequest struct {
-	key      string
-	value    map[string]any
-	errCh    chan error
-	writeCtx context.Context
 }
 
 func NewBadgerStorage() *BadgerStorage {
@@ -110,7 +104,7 @@ func (store *BadgerStorage) put(key string, value map[string]any) error {
 	return nil
 }
 
-func (store *BadgerStorage) AsyncPut(ctx context.Context, key string, value map[string]any) chan error {
+func (store *BadgerStorage) AsyncPut(ctx context.Context, key string, value map[string]any, timestamp time.Time) chan error {
 	returnChannel := make(chan error, 1)
 
 	store.mu.Lock()

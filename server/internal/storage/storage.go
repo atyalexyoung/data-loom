@@ -2,9 +2,18 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"github.com/atyalexyoung/data-loom/server/internal/config"
 )
+
+type dbWriteRequest struct {
+	key       string
+	value     map[string]any
+	errCh     chan error
+	writeCtx  context.Context
+	timestamp time.Time
+}
 
 // Storage is an interface for any storage that will be used.
 type Storage interface {
@@ -16,7 +25,7 @@ type Storage interface {
 	Close() error
 
 	// AsyncPut will set a key to a value that is passed in.
-	AsyncPut(ctx context.Context, key string, value map[string]any) chan error
+	AsyncPut(ctx context.Context, key string, value map[string]any, timestamp time.Time) chan error
 
 	// Get will retrieve the value of the supplied key
 	Get(ctx context.Context, key string) (map[string]any, error)

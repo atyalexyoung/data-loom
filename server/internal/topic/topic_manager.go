@@ -1,6 +1,7 @@
 package topic
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -17,11 +18,11 @@ type TopicManager interface {
 	Unsubscribe(topicName string, client *network.Client) error
 	ListSubscribersForTopic(topicName string) ([]*network.Client, error)
 	UnsubscribeAll(client *network.Client)
-	Publish(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error
-	SendWithoutSave(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error
-	Get(topicName string) (map[string]any, error)
+	Publish(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error
+	SendWithoutSave(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error
+	Get(ctx context.Context, topicName string) (map[string]any, error)
 	RegisterTopic(topicName string, schema map[string]any) (*Topic, error)
-	UnregisterTopic(topicName string) error
+	UnregisterTopic(ctx context.Context, topicName string) error
 	ListTopics() ([]*Topic, error)
 	UpdateSchema(topicName string, schema map[string]any) error
 	NextFailedClient() (*network.Client, bool)
@@ -103,7 +104,7 @@ func (tm *topicManager) UnsubscribeAll(client *network.Client) {
 }
 
 // sendTopic will send the value passed in for a given topic to all the subscribers of that topic.
-func (tm *topicManager) sendTopic(msg network.WebSocketMessage, sender *network.Client, value map[string]any, persist bool, errCh chan error) error {
+func (tm *topicManager) sendTopic(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, persist bool, errCh chan error) error {
 	// get topic from tm and unlock
 	tm.mu.RLock()
 	topic, ok := tm.topics[msg.Topic]
@@ -115,7 +116,25 @@ func (tm *topicManager) sendTopic(msg network.WebSocketMessage, sender *network.
 
 	var dbErrChan chan error
 	if persist { // if it's supposed to be persisted, then persist
-		dbErrChan = tm.db.AsyncPut(msg.Topic, value)
+		time := time.Now().UTC()
+
+		var valueString string
+
+		if raw, err := json.Marshal(value); err != nil {
+			valueString = fmt.Sprintf("marshal_error: %v, fallback=%#v", err, value)
+		} else {
+			valueString = string(raw)
+		}
+		log.WithFields(log.Fields{
+			"sender_id":  sender.Id,
+			"value":      valueString,
+			"action":     msg.Action,
+			"message_id": msg.Id,
+			"topic":      msg.Topic,
+			"time":       time,
+		}).Info("persisting message")
+
+		dbErrChan = tm.db.AsyncPut(ctx, msg.Topic, value, time)
 	}
 
 	raw, err := json.Marshal(value)
@@ -156,17 +175,17 @@ func (tm *topicManager) sendTopic(msg network.WebSocketMessage, sender *network.
 }
 
 // Publish will send the JSON of the message to all clients subscribed to the topic
-func (tm *topicManager) Publish(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error {
-	return tm.sendTopic(msg, sender, value, true, errChan)
+func (tm *topicManager) Publish(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error {
+	return tm.sendTopic(ctx, msg, sender, value, true, errChan)
 }
 
 // SendWithoutSave will publish a value to a topic, but not persist that data to storage.
-func (tm *topicManager) SendWithoutSave(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error {
-	return tm.sendTopic(msg, sender, value, false, errChan)
+func (tm *topicManager) SendWithoutSave(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, errChan chan error) error {
+	return tm.sendTopic(ctx, msg, sender, value, false, errChan)
 }
 
 // Get will retrieve the current value for a given topic
-func (tm *topicManager) Get(topicName string) (map[string]any, error) {
+func (tm *topicManager) Get(ctx context.Context, topicName string) (map[string]any, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -175,7 +194,7 @@ func (tm *topicManager) Get(topicName string) (map[string]any, error) {
 		return nil, fmt.Errorf("couldn't get value for topic. topic doesn't exist. topic: %s", topicName)
 	}
 
-	value, err := tm.db.Get(topic.Name())
+	value, err := tm.db.Get(ctx, topic.Name())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get value for topic with error: %v", err)
 	}
@@ -220,7 +239,7 @@ func schemasMatch(a, b map[string]any) bool {
 
 // UnregisterTopic takes name of topic to unregister and removes it from the topics.
 // returns error if topic doesn't exist.
-func (tm *topicManager) UnregisterTopic(topicName string) error {
+func (tm *topicManager) UnregisterTopic(ctx context.Context, topicName string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -231,7 +250,7 @@ func (tm *topicManager) UnregisterTopic(topicName string) error {
 
 	delete(tm.topics, topicName) // delete the key-value in the map
 
-	if err := tm.db.Delete(topicName); err != nil {
+	if err := tm.db.Delete(ctx, topicName); err != nil {
 		return fmt.Errorf("Topic deleted but unable to delete from persistent storage with err: %v", err)
 	}
 

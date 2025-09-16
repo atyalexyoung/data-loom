@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
+	log "github.com/sirupsen/logrus"
 	_ "modernc.org/sqlite"
 )
 
@@ -45,8 +47,38 @@ func (s *SqliteStorage) Open(path string, ctx context.Context) error {
 	return nil
 }
 
-func (s *SqliteStorage) startWriter(ctx context.Context) {
+func (store *SqliteStorage) startWriter(ctx context.Context) {
+	go func() {
+		for {
+			select {
+			case writeReq, ok := <-store.writeQueue:
+				if !ok {
+					return // queue closed
+				}
 
+				// doing this
+				select { // select context closed or proceed with write
+				// if context closed, write error and continue with loop
+				case <-writeReq.writeCtx.Done():
+					if writeReq.errCh != nil {
+						writeReq.errCh <- writeReq.writeCtx.Err()
+					}
+					continue
+				default: // no cancellation, continue with operation
+				}
+
+				err := store.put(writeReq.writeCtx, writeReq.key, writeReq.value, writeReq.timestamp)
+				if writeReq.errCh != nil { // does this chan exist?
+					writeReq.errCh <- err // give err to whoever sent this
+					log.Info("closing the write errCh")
+					close(writeReq.errCh)
+				}
+
+			case <-ctx.Done(): // if we get cancelled, stop the worker.
+				return
+			}
+		}
+	}()
 }
 
 // Close will handle closing and cleaning up database instance
@@ -66,24 +98,23 @@ func (s *SqliteStorage) Close() error {
 }
 
 // Put will set a key to a value that is passed in.
-func (s *SqliteStorage) put(ctx context.Context, key string, value map[string]any) error {
+func (s *SqliteStorage) put(ctx context.Context, key string, value map[string]any, timestamp time.Time) error {
 
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 
-	const insertStmt = `
-		INSERT INTO messages (topicName, timestamp, data)
+	// TODO: maybe handle error from SQL on collision instead of direct replace.
+	const insertStatement = `
+		INSERT OR REPLACE INTO messages (topicName, timestamp, data)
 		VALUES (?, ?, ?)
 	`
-	_, err = s.db.ExecContext(ctx, insertStmt, topicName, timestamp, data)
+	_, err = s.db.ExecContext(ctx, insertStatement, key, timestamp, data)
 	return err
-
-	return nil
 }
 
-func (s *SqliteStorage) AsyncPut(ctx context.Context, key string, value map[string]any) chan error {
+func (s *SqliteStorage) AsyncPut(ctx context.Context, key string, value map[string]any, timestamp time.Time) chan error {
 	ch := make(chan error, 1)
 
 	s.mu.Lock()
@@ -106,8 +137,26 @@ func (s *SqliteStorage) AsyncPut(ctx context.Context, key string, value map[stri
 }
 
 // Get will retrieve the value of the supplied key
-func Get(ctx context.Context, key string) (map[string]any, error) {
+func (store *SqliteStorage) Get(ctx context.Context, key string) (map[string]any, error) {
+
+	const query = `
+	SELECT data FROM messages
+		WHERE topicName = ? AND timestamp = ?
+	`
+
+	var rawData []byte
+	err := store.db.QueryRowContext(ctx, query, key).Scan(rawData)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
 	var result map[string]any
+	if err := json.Unmarshal(rawData, &result); err != nil {
+
+	}
 
 	return result, nil
 }
