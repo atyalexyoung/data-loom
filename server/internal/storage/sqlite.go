@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// SqliteStorage is the SQLite implementation of the storage.Storage interface.
 type SqliteStorage struct {
 	db         *sql.DB
 	writeQueue chan dbWriteRequest
@@ -19,6 +20,13 @@ type SqliteStorage struct {
 	closed     bool
 }
 
+func NewSqliteStorage() *SqliteStorage {
+	return &SqliteStorage{
+		writeQueue: make(chan dbWriteRequest, 5000),
+	}
+}
+
+// Open will open the database, and create the table if it doesn't exist
 func (s *SqliteStorage) Open(path string, ctx context.Context) error {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -26,14 +34,10 @@ func (s *SqliteStorage) Open(path string, ctx context.Context) error {
 	}
 	sqlStmt := `
 		CREATE TABLE IF NOT EXISTS messages (
-			topicName TEXT NOT NULL,
+			topicName TEXT PRIMARY KEY,
 			timestamp INTEGER NOT NULL,
-			data BLOB NOT NULL,
-			PRIMARY KEY (topicName, timestamp)
+			data BLOB NOT NULL
 		);
-
-		CREATE INDEX IF NOT EXISTS idx_topicName ON messages(topicName);
-		CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
 	`
 
 	_, err = db.Exec(sqlStmt)
@@ -47,6 +51,7 @@ func (s *SqliteStorage) Open(path string, ctx context.Context) error {
 	return nil
 }
 
+// startWriter will start the goroutine that will handle writing to the store.
 func (store *SqliteStorage) startWriter(ctx context.Context) {
 	go func() {
 		for {
@@ -114,6 +119,7 @@ func (s *SqliteStorage) put(ctx context.Context, key string, value map[string]an
 	return err
 }
 
+// AsyncPut will handle queueing a write and handling the error channel that can respond with an error from the async put operation.
 func (s *SqliteStorage) AsyncPut(ctx context.Context, key string, value map[string]any, timestamp time.Time) chan error {
 	ch := make(chan error, 1)
 
@@ -127,7 +133,13 @@ func (s *SqliteStorage) AsyncPut(ctx context.Context, key string, value map[stri
 	s.mu.Unlock()
 
 	select {
-	case s.writeQueue <- dbWriteRequest{key: key, value: value, errCh: ch}:
+	case s.writeQueue <- dbWriteRequest{
+		key:       key,
+		value:     value,
+		errCh:     ch,
+		writeCtx:  ctx,
+		timestamp: timestamp,
+	}:
 		// queued successfully
 	default:
 		ch <- fmt.Errorf("write queue is full")
@@ -141,11 +153,13 @@ func (store *SqliteStorage) Get(ctx context.Context, key string) (map[string]any
 
 	const query = `
 	SELECT data FROM messages
-		WHERE topicName = ? AND timestamp = ?
+		WHERE topicName = ?
+		ORDER BY timestamp DESC
+		LIMIT 1
 	`
 
 	var rawData []byte
-	err := store.db.QueryRowContext(ctx, query, key).Scan(rawData)
+	err := store.db.QueryRowContext(ctx, query, key).Scan(&rawData)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -162,6 +176,8 @@ func (store *SqliteStorage) Get(ctx context.Context, key string) (map[string]any
 }
 
 // Delete will delete a key, value pair from the database.
-func Delete(ctx context.Context, key string) error {
-	return nil
+func (store *SqliteStorage) Delete(ctx context.Context, key string) error {
+	const stmt = `DELETE FROM messages WHERE topicName = ?`
+	_, err := store.db.ExecContext(ctx, stmt, key)
+	return err
 }

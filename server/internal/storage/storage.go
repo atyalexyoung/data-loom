@@ -43,12 +43,12 @@ func NewStorage(cfg *config.Config, ctx context.Context) (Storage, error) {
 			return nil, err
 		}
 		return s, nil
-	// case "sqlite":
-	// 	s := &storage.SQLiteStorage{}
-	// 	if err := s.Open(cfg.StoragePath); err != nil {
-	// 		return nil, err
-	// 	}
-	// 	return s, nil
+	case "sqlite":
+		s := NewSqliteStorage()
+		if err := s.Open(cfg.StoragePath, ctx); err != nil {
+			return nil, err
+		}
+		return s, nil
 	default: // for now during dev just use badger so I don't have to set up the actual stuff
 		s := NewBadgerStorage()
 		if err := s.Open(cfg.StoragePath, ctx); err != nil {
