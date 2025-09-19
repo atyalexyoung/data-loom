@@ -33,3 +33,16 @@ go.work.sum
 
 # ignore generated stuff from testing
 server/tests/tmp/
+
+
+/bin/
+/obj/
+
+# NuGet files
+*.nupkg
+project.assets.json
+project.nuget.cache
+
+# User-specific VS settings
+*.user
+*.suo

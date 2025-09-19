@@ -11,19 +11,24 @@ RUN useradd -m -s /bin/bash -u 1000 vscode \
 WORKDIR /workspace
 RUN chown -R vscode:vscode /workspace
 
-# Switch to vscode user
+# .NET SDK
+RUN wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && sudo dpkg -i packages-microsoft-prod.deb \
+    && rm packages-microsoft-prod.deb \
+    && sudo apt-get update \
+    && sudo apt-get install -y dotnet-sdk-8.0 \
+    && sudo rm -rf /var/lib/apt/lists/*
+
 USER vscode
 
-# Use a GOPATH inside the home directory (writable)
+# Go stuff
 ENV GOPATH=/home/vscode/go
 ENV PATH="$GOPATH/bin:$PATH"
 
-# Install Go tools (gopls + delve)
 RUN mkdir -p $GOPATH \
     && go install golang.org/x/tools/gopls@latest \
     && go install github.com/go-delve/delve/cmd/dlv@latest
 
-# Optionally copy Go modules for caching
 COPY go.mod go.sum ./
 RUN go mod download
 
