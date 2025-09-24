@@ -1,5 +1,6 @@
-using DataLoom.SDK.exceptions;
+using DataLoom.SDK.Exceptions;
 using DataLoom.SDK.Models;
+using DataLoom.SDK.Subscriptions;
 
 namespace DataLoom.SDK.interfaces
 {
@@ -19,7 +20,7 @@ namespace DataLoom.SDK.interfaces
         /// <returns>Task.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
         /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
-        Task<SubscriptionToken> SubscribeAsync<T>(string topicName, Func<T, Task> onMessageReceivedCallback);
+        Task<SubscriptionToken> SubscribeAsync<T>(string topicName, Func<WebSocketMessage<T>, Task> onMessageReceivedCallback);
 
         /// <summary>
         /// PublishAsync will publish to a topic with the name provided with the value that is provided.
@@ -57,7 +58,7 @@ namespace DataLoom.SDK.interfaces
         /// <returns>A Task with value of type T provided.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
         /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
-        Task<T> GetAsync<T>(string topicName);
+        Task<T?> GetAsync<T>(string topicName);
 
         /// <summary>
         /// RegisterTopicAsync will register a topic with the name provided and structure of the type

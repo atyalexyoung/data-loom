@@ -1,4 +1,4 @@
-namespace DataLoom.SDK.exceptions
+namespace DataLoom.SDK.Exceptions
 {
     /// <summary>
     /// Exception thrown when the server cannot process a request.
