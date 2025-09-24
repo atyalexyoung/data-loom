@@ -34,9 +34,8 @@ go.work.sum
 # ignore generated stuff from testing
 server/tests/tmp/
 
-
-/bin/
-/obj/
+**/obj/
+**/bin/
 
 # NuGet files
 *.nupkg
