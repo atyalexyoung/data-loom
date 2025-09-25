@@ -5,108 +5,123 @@ using DataLoom.SDK.Subscriptions;
 namespace DataLoom.SDK.interfaces
 {
     /// <summary>
-    /// IMessagingClient is the interface to interact with messaging server. It provides methods to
-    /// initialize, cleanup, and perform actions.
+    /// IMessagingClient is the interface for interacting with a messaging server.
+    /// It provides methods to connect, subscribe, publish, and manage topics.
     /// </summary>
     public interface IMessagingClient
     {
         /// <summary>
-        /// SubscribeAsync will subscribe to the topic with the name provided and use the callback provided as a handler
-        /// for the values that come in.
+        /// Connects the client to the server using the configured URL and API key.
         /// </summary>
-        /// <typeparam name="T">The type of the topic that is being subscribed to.</typeparam>
-        /// <param name="topicName">The name of the topic that is being subscribed to.</param>
-        /// <param name="onMessageReceivedCallback">Callback for the subscription to act as async handler. </param>
-        /// <returns>Task.</returns>
+        /// <remarks>
+        /// This method asynchronously opens a WebSocket connection to the server. 
+        /// If the connection fails (e.g., due to network issues, invalid URL, or protocol errors), 
+        /// an exception such as <see cref="WebSocketException"/> will be thrown.
+        /// 
+        /// After a successful connection, the receive loop is started in a fire-and-forget task. 
+        /// Exceptions thrown inside the receive loop will not propagate to this method. 
+        /// Consider monitoring them via logging or events if you need to handle fatal errors during message processing.
+        /// </remarks>
+        /// <exception cref="WebSocketException">Thrown if the connection to the server fails.</exception>
+        /// <exception cref="ArgumentException">Thrown if the server URL is invalid.</exception>
+        /// <exception cref="UriFormatException">Thrown if the server URL is not a valid URI.</exception>
+        /// <exception cref="InvalidOperationException">Thrown if the WebSocket is already connected or if options are invalid.</exception>
+        Task ConnectAsync();
+
+        /// <summary>
+        /// Subscribes to a topic with the specified name and handles incoming messages using the provided callback.
+        /// </summary>
+        /// <typeparam name="T">The type of the message data for the topic.</typeparam>
+        /// <param name="topicName">The name of the topic to subscribe to.</param>
+        /// <param name="onMessageReceivedCallback">Async callback invoked when a message is received on the topic.</param>
+        /// <returns>A task that completes with a <see cref="SubscriptionToken"/> for managing the subscription.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the subscription request.</exception>
         Task<SubscriptionToken> SubscribeAsync<T>(string topicName, Func<WebSocketMessage<T>, Task> onMessageReceivedCallback);
 
         /// <summary>
-        /// PublishAsync will publish to a topic with the name provided with the value that is provided.
+        /// Publishes a message to a topic.
         /// </summary>
-        /// <typeparam name="T">The type of the message that is being published.</param>
-        /// <param name="topicName">The name of the topic that the message is being published on.</param>
-        /// <param name="value">The value of the message to be published.</param>
-        /// <returns>Task.</returns>
+        /// <typeparam name="T">The type of the message data.</typeparam>
+        /// <param name="topicName">The name of the topic to publish to.</param>
+        /// <param name="value">The message data to publish.</param>
+        /// <returns>A task representing the asynchronous publish operation.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the publish request.</exception>
         Task PublishAsync<T>(string topicName, T value);
 
         /// <summary>
-        /// UnsubscribeAsync will usubscribe from the topic of the name provided.
+        /// Unsubscribes from a topic for the given subscription token.
         /// </summary>
         /// <param name="topicName">The name of the topic to unsubscribe from.</param>
-        /// <param name="subscriptionToken">The token of the subscription to unsubscribe from </param>
-        /// <returns>Task</returns>
+        /// <param name="subscriptionToken">The subscription token associated with the subscription.</param>
+        /// <returns>A task representing the asynchronous unsubscribe operation.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <exception cref="SubscriptionFailedException">Thrown if the subscription could not be removed locally.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the unsubscribe request.</exception>
         Task UnsubscribeAsync(string topicName, SubscriptionToken subscriptionToken);
 
         /// <summary>
-        /// UnsubscribeAllAsync will unsubscribe from all topics for this client.
+        /// Unsubscribes from all topics for this client.
         /// </summary>
-        /// <returns>Task</returns>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        /// <exception cref="ServerException">Thrown if the server cannot process the unsubscribe request.</exception>
         Task UnsubscribeAllAsync();
 
         /// <summary>
-        /// GetAsync will retrieve a value for the topic of the name provided.
+        /// Retrieves the latest value for a topic.
         /// </summary>
-        /// <typeparam name="T">The type of the value that will be retreived.</typeparam>
-        /// <param name="topicName">The name of the topic to retreive the value of.</param>
-        /// <returns>A Task with value of type T provided.</returns>
+        /// <typeparam name="T">The type of the value to retrieve.</typeparam>
+        /// <param name="topicName">The name of the topic.</param>
+        /// <returns>A task that completes with the value, or null if no value exists.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the get request.</exception>
         Task<T?> GetAsync<T>(string topicName);
 
         /// <summary>
-        /// RegisterTopicAsync will register a topic with the name provided and structure of the type
-        /// that is specified.
+        /// Registers a new topic with the specified name and schema type.
         /// </summary>
-        /// <typeparam name="T">The type of the topic.</typeparam>
-        /// <param name="topicName">The name of the topic.</param>
-        /// <returns>Task</returns>
+        /// <typeparam name="T">The type representing the structure of the topic.</typeparam>
+        /// <param name="topicName">The name of the topic to register.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the register request.</exception>
         Task RegisterTopicAsync<T>(string topicName);
 
         /// <summary>
-        /// UnregisterTopicAsync will unregister a topic of the name provided from the server. This will
-        /// stop all publishing and subscriptions to this particular topic for ALL clients.
+        /// Unregisters a topic with the specified name.
+        /// This stops all publishing and subscriptions for the topic across all clients.
         /// </summary>
         /// <param name="topicName">The name of the topic to unregister.</param>
-        /// <returns>Task</returns>
+        /// <returns>A task representing the asynchronous operation.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the unregister request.</exception>
         Task UnregisterTopicAsync(string topicName);
 
         /// <summary>
-        /// ListTopicsAsync will get the names of all the current topics registered on the server.
+        /// Retrieves a list of all currently registered topics on the server.
         /// </summary>
-        /// <returns>Task with IEnumerable of strings of the topic names.</returns>
-        /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
+        /// <returns>A task that completes with an enumerable of topic names.</returns>
+        /// <exception cref="ServerException">Thrown if the server cannot process the list request.</exception>
         Task<IEnumerable<string>> ListTopicsAsync();
 
         /// <summary>
-        /// UpdateSchemaAsync will update the structure of the topic of the name provided to the type
-        /// that is specified.
+        /// Updates the schema of an existing topic to a new type.
         /// </summary>
-        /// <typeparam name="T">The new type for the structure of the schema.</typeparam>
-        /// <param name="topicName">The name of the topic to update the schema for.</param>
-        /// <returns>Task</returns>
+        /// <typeparam name="T">The type representing the new schema for the topic.</typeparam>
+        /// <param name="topicName">The name of the topic to update.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
-        /// <exception cref="ServerException">Thrown if the server cannot processf the request.</exception>
+        /// <exception cref="ServerException">Thrown if the server cannot process the update request.</exception>
         Task UpdateSchemaAsync<T>(string topicName);
 
         /// <summary>
-        /// SendWithoutSaveAsync will publish on a topic of the name provided with a message, and will
-        /// not persist the message to storage.
+        /// Publishes a message to a topic without persisting it to storage.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="topicName"></param>
-        /// <param name="value"></param>
-        /// <returns>Task</returns>
+        /// <typeparam name="T">The type of the message data.</typeparam>
+        /// <param name="topicName">The name of the topic to publish to.</param>
+        /// <param name="value">The message data to publish.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         /// <exception cref="ArgumentException">Thrown if the topic name is invalid.</exception>
         /// <exception cref="ServerException">Thrown if the server cannot process the request.</exception>
         Task SendWithoutSaveAsync<T>(string topicName, T value);
