@@ -70,7 +70,7 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager,
 	s.registerHandler("get", s.getHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("registerTopic", s.registerTopicHandler, s.metricsDecorator, s.requireDataDecorator, s.requireTopicDecorator)
 	s.registerHandler("unregisterTopic", s.unregisterTopicHandler, s.metricsDecorator, s.requireTopicDecorator)
-	s.registerHandler("listTopics", s.listTopicsHandler, s.metricsDecorator) // no required topcs
+	s.registerHandler("listTopics", s.listTopicsHandler, s.metricsDecorator) // no required topics
 	s.registerHandler("updateSchema", s.updateSchemaHandler, s.metricsDecorator, s.requireTopicDecorator, s.requireDataDecorator)
 	s.registerHandler("sendWithoutSave", s.sendWithoutSaveHandler, s.metricsDecorator, s.requireTopicDecorator, s.requireDataDecorator)
 
@@ -115,9 +115,6 @@ func (s *WebSocketServer) authToken(token string) bool {
 // and each client will get their own handleWebSocket handler.
 func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
-	// generate a new UUID for this connection
-	clientID := uuid.NewString()
-
 	// get token for auth
 	token := r.Header.Get("Authorization")
 	if !s.authToken(token) {
@@ -125,9 +122,16 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// set the client ID in an HttpOnly cookie
-	responseHeader := http.Header{}
-	responseHeader.Set("Set-Cookie", fmt.Sprintf("client_id=%s; HttpOnly", clientID))
+	clientID := r.Header.Get("ClientId")
+	if clientID == "" {
+		clientID = uuid.NewString() // fallback to generated ID
+	}
+
+	// check if the client Id is already used or not.
+	if currentClient := s.hub.GetClient(clientID); currentClient != nil {
+		http.Error(w, "client ID already exists", http.StatusConflict)
+		return
+	}
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {

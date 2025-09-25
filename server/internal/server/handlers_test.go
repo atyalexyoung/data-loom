@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,17 +45,17 @@ func (tm *mockTopicManager) UnsubscribeAll(client *network.Client) {
 	tm.IsMethodCalled = true
 }
 
-func (tm *mockTopicManager) Publish(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errCh chan error) error {
+func (tm *mockTopicManager) Publish(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, errCh chan error) error {
 	tm.IsMethodCalled = true
 	return tm.ErrorResult
 }
 
-func (tm *mockTopicManager) SendWithoutSave(msg network.WebSocketMessage, sender *network.Client, value map[string]any, errCh chan error) error {
+func (tm *mockTopicManager) SendWithoutSave(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, errCh chan error) error {
 	tm.IsMethodCalled = true
 	return tm.ErrorResult
 }
 
-func (tm *mockTopicManager) Get(topicName string) (map[string]any, error) {
+func (tm *mockTopicManager) Get(ctx context.Context, topicName string) (map[string]any, error) {
 	tm.IsMethodCalled = true
 	return tm.MapResult, tm.ErrorResult
 }
@@ -64,7 +65,7 @@ func (tm *mockTopicManager) RegisterTopic(topicName string, schema map[string]an
 	return tm.TopicResult, tm.ErrorResult
 }
 
-func (tm *mockTopicManager) UnregisterTopic(topicName string) error {
+func (tm *mockTopicManager) UnregisterTopic(ctx context.Context, topicName string) error {
 	tm.IsMethodCalled = true
 	return tm.ErrorResult
 }

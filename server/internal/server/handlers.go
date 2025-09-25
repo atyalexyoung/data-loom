@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -129,6 +130,9 @@ func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocke
 		s.AckResponseBadRequest(c, msg, err)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	errCh := make(chan error, 1)
 	go func() {
 		select {
@@ -136,7 +140,7 @@ func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocke
 			if err != nil {
 				s.AckResponseDatabaseError(c, msg, err)
 			}
-		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
 			log.WithFields(log.Fields{
 				"topic":  msg.Topic,
 				"client": c.Id,
@@ -145,7 +149,7 @@ func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocke
 		}
 	}()
 
-	if err := s.topicManager.Publish(msg, c, msg.ParsedData, errCh); err != nil {
+	if err := s.topicManager.Publish(ctx, msg, c, msg.ParsedData, errCh); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)
@@ -162,7 +166,11 @@ func (s *WebSocketServer) unsubscribeAllHandler(c *network.Client, msg network.W
 // getHandler handles a request to get a topic value, errors from topic manager, and
 // sending response to requesting client.
 func (s *WebSocketServer) getHandler(c *network.Client, msg network.WebSocketMessage) {
-	if data, err := s.topicManager.Get(msg.Topic); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if data, err := s.topicManager.Get(ctx, msg.Topic); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccessWithData(c, msg, data)
@@ -189,7 +197,11 @@ func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg network.We
 // unregisterTopicHandler handles request from client to unregister a topic, error from topic
 // manager doing work, and responding to the requesting client.
 func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg network.WebSocketMessage) {
-	if err := s.topicManager.UnregisterTopic(msg.Topic); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := s.topicManager.UnregisterTopic(ctx, msg.Topic); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)
@@ -263,14 +275,30 @@ func (s *WebSocketServer) sendWithoutSaveHandler(c *network.Client, msg network.
 		s.AckResponseBadRequest(c, msg, err)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Making error channel for database to async give errors about persistence
+	// back to handler to communicate that with the client.
 	errCh := make(chan error, 1)
 	go func() {
-		if err := <-errCh; err != nil {
-			s.AckResponseDatabaseError(c, msg, err)
+		select {
+		case err := <-errCh:
+			if err != nil {
+				s.AckResponseDatabaseError(c, msg, err)
+			}
+		case <-ctx.Done():
+			log.WithFields(log.Fields{
+				"topic":      msg.Topic,
+				"client":     c.Id,
+				"message_id": msg.Id,
+				"Action":     msg.Action,
+			}).Warnf("DB write timeout for topic: %s, client: %s", msg.Topic, c.Id)
+			s.AckResponseDatabaseError(c, msg, fmt.Errorf("timeout when persisting"))
 		}
 	}()
 
-	if err := s.topicManager.Publish(msg, c, msg.ParsedData, errCh); err != nil {
+	if err := s.topicManager.Publish(ctx, msg, c, msg.ParsedData, errCh); err != nil {
 		s.AckResponseError(c, msg, err)
 	} else {
 		s.AckResponseSuccess(c, msg)
