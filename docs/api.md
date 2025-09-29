@@ -26,7 +26,8 @@ Messages are JSON objects that match the following schema:
   "action": "subscribe",
   "topic": "chat-room",
   "data": { ... },          // optional, depends on action
-  "requireAck": true        // optional, request a server ack
+  "requireAck": true,       // optional, request a server ack
+  "senderId"                // optional when sending. The server will fill this in when neccessary.
 }
 ```
 
@@ -110,11 +111,12 @@ When subscribing to a topic, you will get the entire Web Socket Message that the
   "action": "subscribe",
   "topic": "chat-room",
   "data": { ... },          // optional, depends on action
-  "requireAck": true        // optional, request a server ack
+  "requireAck": true,       // optional, request a server ack
+  "senderId": "client-id"
 }
 ```
 
-This means that in order to get the updated topic information, you will have to access the "data" field.
+This means that in order to get the updated topic information, you will have to access the "data" field. This also includes the sender ID, which is set upon connection with the server. The server fills this field in when sending to other clients based on the ID that is provided when the client first connected to the server. 
 
 
 
