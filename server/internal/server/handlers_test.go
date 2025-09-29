@@ -113,7 +113,7 @@ func SetupStuff(m *mockTopicManager) (*testServer, *network.Client) {
 //------------------------------------------------------------------- subscribe handler tests
 
 var subscribeWithAck = network.WebSocketMessage{
-	Id:         "subscribeWithAck",
+	MessageId:  "subscribeWithAck",
 	Action:     "subscribe",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"filter":"none"}`),
@@ -122,7 +122,7 @@ var subscribeWithAck = network.WebSocketMessage{
 }
 
 var subscribeWithoutAck = network.WebSocketMessage{
-	Id:         "subscribeWithoutAck",
+	MessageId:  "subscribeWithoutAck",
 	Action:     "subscribe",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"filter":"none"}`),
@@ -191,7 +191,7 @@ func TestSubscribeHandlerFailFromTopicManager(t *testing.T) {
 //------------------------------------------------------------------ unsubscribe handler tests
 
 var unsubscribeWithAck = network.WebSocketMessage{
-	Id:         "unsubscribeWithAck",
+	MessageId:  "unsubscribeWithAck",
 	Action:     "unsubscribe",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{}`),
@@ -199,7 +199,7 @@ var unsubscribeWithAck = network.WebSocketMessage{
 }
 
 var unsubscribeWithoutAck = network.WebSocketMessage{
-	Id:         "unsubscribeWithoutAck",
+	MessageId:  "unsubscribeWithoutAck",
 	Action:     "unsubscribe",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{}`),
@@ -267,7 +267,7 @@ func TestUnsubscribeHandlerFailFromTopicManager(t *testing.T) {
 //------------------------------------------------------------------- publish handler tests
 
 var publishSuccessWithAck = network.WebSocketMessage{
-	Id:         "publishWithAck",
+	MessageId:  "publishWithAck",
 	Action:     "publish",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -276,7 +276,7 @@ var publishSuccessWithAck = network.WebSocketMessage{
 }
 
 var publishSuccessWithoutAck = network.WebSocketMessage{
-	Id:         "publishWithoutAck",
+	MessageId:  "publishWithoutAck",
 	Action:     "publish",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -285,7 +285,7 @@ var publishSuccessWithoutAck = network.WebSocketMessage{
 }
 
 var publishFailFromTopicManager = network.WebSocketMessage{
-	Id:         "publishWithoutAck",
+	MessageId:  "publishWithoutAck",
 	Action:     "publish",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -294,10 +294,10 @@ var publishFailFromTopicManager = network.WebSocketMessage{
 }
 
 var publishFailFromNoDataSupplied = network.WebSocketMessage{
-	Id:     "publishWithoutAck",
-	Action: "publish",
-	Topic:  "testTopic",
-	Data:   json.RawMessage(`{"message":"hello world"}`),
+	MessageId: "publishWithoutAck",
+	Action:    "publish",
+	Topic:     "testTopic",
+	Data:      json.RawMessage(`{"message":"hello world"}`),
 	//ParsedData: none
 	RequireAck: false,
 }
@@ -407,7 +407,7 @@ func TestPublishFailFromNoParsedData(t *testing.T) {
 //------------------------------------------------------------------- register handler tests
 
 var registerTopicSuccesssMsg = network.WebSocketMessage{
-	Id:         "registerTopicWithAck",
+	MessageId:  "registerTopicWithAck",
 	Action:     "registerTopic",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"info":"example"}`),
@@ -416,10 +416,10 @@ var registerTopicSuccesssMsg = network.WebSocketMessage{
 }
 
 var registerTopicFailNoParsedData = network.WebSocketMessage{
-	Id:     "registerTopicBadJSON",
-	Action: "registerTopic",
-	Topic:  "testTopic",
-	Data:   json.RawMessage(`{"invalid":}`),
+	MessageId: "registerTopicBadJSON",
+	Action:    "registerTopic",
+	Topic:     "testTopic",
+	Data:      json.RawMessage(`{"invalid":}`),
 	// ParsedData: none
 	RequireAck: true,
 }
@@ -500,7 +500,7 @@ func TestRegisterHandlerFailFromNoData(t *testing.T) {
 //------------------------------------------------------------------ unregister handler tests
 
 var unregisterWithAck = network.WebSocketMessage{
-	Id:         "unsubscribeWithAck",
+	MessageId:  "unsubscribeWithAck",
 	Action:     "unsubscribe",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{}`),
@@ -508,7 +508,7 @@ var unregisterWithAck = network.WebSocketMessage{
 }
 
 var unregisterWithoutAck = network.WebSocketMessage{
-	Id:         "unsubscribeWithoutAck",
+	MessageId:  "unsubscribeWithoutAck",
 	Action:     "unsubscribe",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{}`),
@@ -578,7 +578,7 @@ func TestUnregisterHandlerFailFromTopicManager(t *testing.T) {
 //-------------------------------------------------------------- update schema  handler tests
 
 var updateSchemaSuccessWithAck = network.WebSocketMessage{
-	Id:         "sendWithoutSaveSuccessWithAck",
+	MessageId:  "sendWithoutSaveSuccessWithAck",
 	Action:     "sendWithoutSave",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -587,7 +587,7 @@ var updateSchemaSuccessWithAck = network.WebSocketMessage{
 }
 
 var updateSchemaSuccessWithoutAck = network.WebSocketMessage{
-	Id:         "sendWithoutSaveSuccessWithoutAck",
+	MessageId:  "sendWithoutSaveSuccessWithoutAck",
 	Action:     "sendWithoutSave",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -596,10 +596,10 @@ var updateSchemaSuccessWithoutAck = network.WebSocketMessage{
 }
 
 var updateSchemaFailFromNoDataSupplied = network.WebSocketMessage{
-	Id:     "sendWithoutSaveFailFromNoDataSupplied",
-	Action: "sendWithoutSave",
-	Topic:  "testTopic",
-	Data:   json.RawMessage(`{"message":"hello world"}`),
+	MessageId: "sendWithoutSaveFailFromNoDataSupplied",
+	Action:    "sendWithoutSave",
+	Topic:     "testTopic",
+	Data:      json.RawMessage(`{"message":"hello world"}`),
 	//ParsedData: none
 	RequireAck: false,
 }
@@ -706,7 +706,7 @@ func TestUpdateSchemaFailFromNoParsedData(t *testing.T) {
 //----------------------------------------------------------- send without save handler tests
 
 var sendWithoutSaveSuccessWithAck = network.WebSocketMessage{
-	Id:         "sendWithoutSaveSuccessWithAck",
+	MessageId:  "sendWithoutSaveSuccessWithAck",
 	Action:     "sendWithoutSave",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -715,7 +715,7 @@ var sendWithoutSaveSuccessWithAck = network.WebSocketMessage{
 }
 
 var sendWithoutSaveSuccessWithoutAck = network.WebSocketMessage{
-	Id:         "sendWithoutSaveSuccessWithoutAck",
+	MessageId:  "sendWithoutSaveSuccessWithoutAck",
 	Action:     "sendWithoutSave",
 	Topic:      "testTopic",
 	Data:       json.RawMessage(`{"message":"hello world"}`),
@@ -724,10 +724,10 @@ var sendWithoutSaveSuccessWithoutAck = network.WebSocketMessage{
 }
 
 var sendWithoutSaveFailFromNoDataSupplied = network.WebSocketMessage{
-	Id:     "sendWithoutSaveFailFromNoDataSupplied",
-	Action: "sendWithoutSave",
-	Topic:  "testTopic",
-	Data:   json.RawMessage(`{"message":"hello world"}`),
+	MessageId: "sendWithoutSaveFailFromNoDataSupplied",
+	Action:    "sendWithoutSave",
+	Topic:     "testTopic",
+	Data:      json.RawMessage(`{"message":"hello world"}`),
 	//ParsedData: none
 	RequireAck: false,
 }

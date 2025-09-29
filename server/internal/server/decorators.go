@@ -10,6 +10,15 @@ import (
 	"github.com/atyalexyoung/data-loom/server/internal/network"
 )
 
+// injectSenderIdDecorator will insert the client ID that the server has for a client into the message.
+func (s *WebSocketServer) injectSenderIdDecorator(next HandlerFunc) HandlerFunc {
+	return func(c *network.Client, msg network.WebSocketMessage) {
+		// Overwrite any client-sent senderId with the server-known client Id
+		msg.SenderId = c.Id
+		next(c, msg)
+	}
+}
+
 func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning require message topic decorator.")
 	return func(c *network.Client, msg network.WebSocketMessage) {

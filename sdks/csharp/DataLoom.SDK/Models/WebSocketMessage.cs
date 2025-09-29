@@ -5,7 +5,10 @@ namespace DataLoom.SDK.Models
 	public class WebSocketMessage<T>
 	{
 		[JsonPropertyName("id")]
-		public required string Id { get; set; }
+		public required string MessageId { get; set; }
+
+		[JsonPropertyName("senderId")]
+		public string? SenderId { get; set; }
 
 		[JsonPropertyName("action")]
 		public required string Action { get; set; }

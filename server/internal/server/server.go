@@ -65,7 +65,7 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager,
 
 	log.Debug("Setting up handlers...")
 	s.registerHandler("subscribe", s.subscribeHandler, s.metricsDecorator, s.requireTopicDecorator)
-	s.registerHandler("publish", s.publishHandler, s.metricsDecorator, s.requireDataDecorator, s.requireTopicDecorator)
+	s.registerHandler("publish", s.publishHandler, s.metricsDecorator, s.injectSenderIdDecorator, s.requireDataDecorator, s.requireTopicDecorator)
 	s.registerHandler("unsubscribe", s.unsubscribeHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("unsubscribeAll", s.unsubscribeAllHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("get", s.getHandler, s.metricsDecorator, s.requireTopicDecorator)
@@ -73,7 +73,7 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager,
 	s.registerHandler("unregisterTopic", s.unregisterTopicHandler, s.metricsDecorator, s.requireTopicDecorator)
 	s.registerHandler("listTopics", s.listTopicsHandler, s.metricsDecorator) // no required topics
 	s.registerHandler("updateSchema", s.updateSchemaHandler, s.metricsDecorator, s.requireTopicDecorator, s.requireDataDecorator)
-	s.registerHandler("sendWithoutSave", s.sendWithoutSaveHandler, s.metricsDecorator, s.requireTopicDecorator, s.requireDataDecorator)
+	s.registerHandler("sendWithoutSave", s.sendWithoutSaveHandler, s.metricsDecorator, s.injectSenderIdDecorator, s.requireTopicDecorator, s.requireDataDecorator)
 
 	/*
 		FUTURE HANDLERS
@@ -252,9 +252,9 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 	if errors.As(err, &syntaxErr) {
 		ctx.WithField("offset", syntaxErr.Offset).Error("JSON syntax error")
 		s.sender.SendToClient(client, network.Response{
-			Id:   "UNKNOWN",
-			Type: "UNKOWN",
-			Code: http.StatusBadRequest,
+			MessageId: "UNKNOWN",
+			Type:      "UNKOWN",
+			Code:      http.StatusBadRequest,
 		})
 		return true
 	}
@@ -268,9 +268,9 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 		}).Error("JSON type error")
 
 		s.sender.SendToClient(client, network.Response{
-			Id:   "UNKNOWN",
-			Type: "UNKOWN",
-			Code: http.StatusBadRequest,
+			MessageId: "UNKNOWN",
+			Type:      "UNKOWN",
+			Code:      http.StatusBadRequest,
 		})
 		return true
 	}

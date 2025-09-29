@@ -34,7 +34,8 @@ namespace DataLoom.SDK.Subscriptions
 
             var typedMsg = new WebSocketMessage<T>
             {
-                Id = message.Id,
+                MessageId = message.MessageId,
+                SenderId = message.SenderId,
                 Action = message.Action,
                 Topic = message.Topic,
                 Data = typedData,

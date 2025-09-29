@@ -8,7 +8,8 @@ import (
 // Contains the action to preform, the topic to preform the action on (if applicable),
 // and any accompanying data (if applicable)
 type WebSocketMessage struct {
-	Id         string          `json:"id"`
+	MessageId  string          `json:"id"`
+	SenderId   string          `json:"senderId,omitempty"`
 	Action     string          `json:"action"`
 	Topic      string          `json:"topic,omitempty"`
 	Data       json.RawMessage `json:"data,omitempty"`
@@ -20,11 +21,11 @@ type WebSocketMessage struct {
 // it will contain the type of response, the status code as http code,
 // any accompanying message about the status if applicable, and the data if applicable
 type Response struct {
-	Id      string `json:"id"`
-	Type    string `json:"type"`
-	Code    int    `json:"code"`              // 200, 400, etc.
-	Message string `json:"message,omitempty"` // "OK" or error message
-	Data    any    `json:"data,omitempty"`    // optional payload (topic info, schema, etc.)
+	MessageId string `json:"id"`
+	Type      string `json:"type"`
+	Code      int    `json:"code"`              // 200, 400, etc.
+	Message   string `json:"message,omitempty"` // "OK" or error message
+	Data      any    `json:"data,omitempty"`    // optional payload (topic info, schema, etc.)
 }
 
 // TopicSchemaResponse will contain information a client would want to

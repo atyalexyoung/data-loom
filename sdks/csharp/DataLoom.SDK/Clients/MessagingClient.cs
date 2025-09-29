@@ -79,7 +79,7 @@ namespace DataLoom.SDK.Clients
             {
                 _webSocket.Options.SetRequestHeader("Authorization", _options.ApiKey);
             }
-            
+
             _webSocket.Options.SetRequestHeader("ClientId", _options.ClientId);
             await _webSocket.ConnectAsync(uri, CancellationToken.None);
 
@@ -184,7 +184,7 @@ namespace DataLoom.SDK.Clients
             {
                 Action = SUBSCRIBE,
                 Topic = topicName,
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 RequireAck = _options.IsServerAckEnabled,
             }, _options.IsServerAckEnabled);
 
@@ -213,7 +213,7 @@ namespace DataLoom.SDK.Clients
         {
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<T>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = PUBLISH,
                 Topic = topicName,
                 Data = value,
@@ -239,7 +239,7 @@ namespace DataLoom.SDK.Clients
 
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<object>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = UNSUBSCRIBE,
                 Topic = topicName,
                 RequireAck = _options.IsServerAckEnabled
@@ -256,7 +256,7 @@ namespace DataLoom.SDK.Clients
         {
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<object>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = UNSUBSCRIBE_ALL,
                 RequireAck = _options.IsServerAckEnabled,
             }, _options.IsServerAckEnabled);
@@ -276,9 +276,9 @@ namespace DataLoom.SDK.Clients
         {
             var response = await SendAndWaitForAckAsync(new WebSocketMessage<T>
             {
+                MessageId = Guid.NewGuid().ToString(),
                 Action = GET,
                 Topic = topicName,
-                Id = Guid.NewGuid().ToString(),
                 RequireAck = true
             }, true) ?? throw new ServerException(-1, "Recieved null response from server from get request for topic: " + topicName);
 
@@ -303,7 +303,7 @@ namespace DataLoom.SDK.Clients
 
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<object>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = REGISTER_TOPIC,
                 Topic = topicName,
                 RequireAck = _options.IsServerAckEnabled,
@@ -322,7 +322,7 @@ namespace DataLoom.SDK.Clients
         {
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<object>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = UNREGISTER_TOPIC,
                 Topic = topicName,
                 RequireAck = _options.IsServerAckEnabled,
@@ -342,8 +342,8 @@ namespace DataLoom.SDK.Clients
         {
             var response = await SendAndWaitForAckAsync(new WebSocketMessage<object?>
             {
+                MessageId = Guid.NewGuid().ToString(),
                 Action = LIST_TOPICS,
-                Id = Guid.NewGuid().ToString(),
                 RequireAck = true
             }, true) ?? throw new ServerException(-1, "Recieved null response from server from list topics request");
 
@@ -372,7 +372,7 @@ namespace DataLoom.SDK.Clients
 
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<object>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = UPDATE_SCHEMA,
                 Topic = topicName,
                 RequireAck = _options.IsServerAckEnabled,
@@ -394,7 +394,7 @@ namespace DataLoom.SDK.Clients
         {
             var ack = await SendAndWaitForAckAsync(new WebSocketMessage<T>
             {
-                Id = Guid.NewGuid().ToString(),
+                MessageId = Guid.NewGuid().ToString(),
                 Action = SEND_WITHOUT_SAVE,
                 Topic = topicName,
                 Data = value,
@@ -437,7 +437,7 @@ namespace DataLoom.SDK.Clients
                 return null;
             }
 
-            var tcs = NewTcs(request.Id);
+            var tcs = NewTcs(request.MessageId);
             await SendWebSocketMessage(request);
 
             var delayTask = Task.Delay(timeoutMs);
@@ -446,8 +446,8 @@ namespace DataLoom.SDK.Clients
             if (completedTask == delayTask)
             {
                 // timeout: remove the pending TCS so it doesn't leak
-                _pendingResponses.TryRemove(request.Id, out _);
-                throw new ResponseTimeoutException(request.Id, $"Response timed out for request {request.Id}");
+                _pendingResponses.TryRemove(request.MessageId, out _);
+                throw new ResponseTimeoutException(request.MessageId, $"Response timed out for request {request.MessageId}");
             }
             return await tcs.Task;
         }

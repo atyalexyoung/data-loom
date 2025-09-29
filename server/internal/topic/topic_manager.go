@@ -129,7 +129,7 @@ func (tm *topicManager) sendTopic(ctx context.Context, msg network.WebSocketMess
 			"sender_id":  sender.Id,
 			"value":      valueString,
 			"action":     msg.Action,
-			"message_id": msg.Id,
+			"message_id": msg.MessageId,
 			"topic":      msg.Topic,
 			"time":       time,
 		}).Info("persisting message")
@@ -142,10 +142,10 @@ func (tm *topicManager) sendTopic(ctx context.Context, msg network.WebSocketMess
 		return fmt.Errorf("Could not marshal json data.")
 	}
 	outboundMessage := &network.WebSocketMessage{
-		Id:     msg.Id,
-		Action: msg.Action,
-		Topic:  msg.Topic,
-		Data:   raw,
+		MessageId: msg.MessageId,
+		Action:    msg.Action,
+		Topic:     msg.Topic,
+		Data:      raw,
 	}
 	failedClients := topic.Publish(sender, outboundMessage)
 

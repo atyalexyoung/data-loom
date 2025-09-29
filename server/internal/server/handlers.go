@@ -25,57 +25,57 @@ func parseJSON[T any](data json.RawMessage) (T, error) {
 
 // AckResponseSuccess with handle logging and responding to client if action was successful
 func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg network.WebSocketMessage) {
-	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.Id)
+	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.MessageId)
 	if msg.RequireAck {
 		s.sender.SendToClient(c, network.Response{
-			Id:   msg.Id,
-			Type: msg.Action,
-			Code: http.StatusOK,
+			MessageId: msg.MessageId,
+			Type:      msg.Action,
+			Code:      http.StatusOK,
 		})
-		logger.HandlerAck(c.Id, msg.Action, msg.Topic, msg.Id)
+		logger.HandlerAck(c.Id, msg.Action, msg.Topic, msg.MessageId)
 	}
 }
 
 // AckResponseData will handle logging and response with data to client.
 func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg network.WebSocketMessage, data any) {
-	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.Id)
+	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.MessageId)
 	s.sender.SendToClient(c, network.Response{
-		Id:   msg.Id,
-		Type: msg.Action,
-		Code: http.StatusOK,
-		Data: data,
+		MessageId: msg.MessageId,
+		Type:      msg.Action,
+		Code:      http.StatusOK,
+		Data:      data,
 	})
-	logger.HandlerAck(c.Id, msg.Action, msg.Topic, msg.Id)
+	logger.HandlerAck(c.Id, msg.Action, msg.Topic, msg.MessageId)
 }
 
 // AckResponseError will handle logging and creating response to the client if an error has occured
 func (s *WebSocketServer) AckResponseError(c *network.Client, msg network.WebSocketMessage, err error) {
-	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
+	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.MessageId, err)
 	s.sender.SendToClient(c, network.Response{
-		Id:      msg.Id,
-		Type:    msg.Action,
-		Code:    http.StatusInternalServerError,
-		Message: err.Error(),
+		MessageId: msg.MessageId,
+		Type:      msg.Action,
+		Code:      http.StatusInternalServerError,
+		Message:   err.Error(),
 	})
 }
 
 func (s *WebSocketServer) AckResponseBadRequest(c *network.Client, msg network.WebSocketMessage, err error) {
-	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
+	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.MessageId, err)
 	s.sender.SendToClient(c, network.Response{
-		Id:      msg.Id,
-		Type:    msg.Action,
-		Code:    http.StatusBadRequest,
-		Message: err.Error(),
+		MessageId: msg.MessageId,
+		Type:      msg.Action,
+		Code:      http.StatusBadRequest,
+		Message:   err.Error(),
 	})
 }
 
 func (s *WebSocketServer) AckResponseDatabaseError(c *network.Client, msg network.WebSocketMessage, err error) {
-	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.Id, err)
+	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.MessageId, err)
 	s.sender.SendToClient(c, network.Response{
-		Id:      msg.Id,
-		Type:    "persist",
-		Code:    http.StatusInternalServerError,
-		Message: err.Error(),
+		MessageId: msg.MessageId,
+		Type:      "persist",
+		Code:      http.StatusInternalServerError,
+		Message:   err.Error(),
 	})
 }
 
@@ -291,7 +291,7 @@ func (s *WebSocketServer) sendWithoutSaveHandler(c *network.Client, msg network.
 			log.WithFields(log.Fields{
 				"topic":      msg.Topic,
 				"client":     c.Id,
-				"message_id": msg.Id,
+				"message_id": msg.MessageId,
 				"Action":     msg.Action,
 			}).Warnf("DB write timeout for topic: %s, client: %s", msg.Topic, c.Id)
 			s.AckResponseDatabaseError(c, msg, fmt.Errorf("timeout when persisting"))
