@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/atyalexyoung/data-loom/server/internal/config"
@@ -49,12 +50,9 @@ func NewStorage(cfg *config.Config, ctx context.Context) (Storage, error) {
 			return nil, err
 		}
 		return s, nil
-	default: // for now during dev just use badger so I don't have to set up the actual stuff
-		s := NewBadgerStorage()
-		if err := s.Open(cfg.StoragePath, ctx); err != nil {
-			return nil, err
-		}
-		return s, nil
-		//return nil, fmt.Errorf("unknown storage type: %s", cfg.StorageType)
+	case "none", "":
+		return NewNullStorage(), nil
+	default:
+		return nil, fmt.Errorf("unknown storage type: %s", cfg.StorageType)
 	}
 }

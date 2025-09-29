@@ -28,8 +28,8 @@ func Load() *Config {
 		log.Debugf("Successfully read storage type as: %s", sType)
 		cfg.StorageType = sType
 	} else {
-		log.Debugf("Couldn't read storage type. Setting as default of badger")
-		cfg.StorageType = "badger"
+		log.Debugf("Couldn't read storage type. Setting as default of no persistence")
+		cfg.StorageType = ""
 	}
 
 	if sPath := os.Getenv("STORAGE_PATH"); sPath != "" {

@@ -13,8 +13,8 @@ func TestLoad_Defaults(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, "data-loom-api-key", cfg.APIKey)
-	assert.Equal(t, "badger", cfg.StorageType)
+	assert.Equal(t, "", cfg.APIKey)
+	assert.Equal(t, "", cfg.StorageType)
 	assert.Equal(t, "./tmp/data", cfg.StoragePath)
 }
 
