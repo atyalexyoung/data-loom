@@ -29,7 +29,7 @@ The SDK uses a builder pattern to configure and create a messaging client. The b
 - Whether to receive server acknowledgements
 - Number of reconnect retries
 
-But the only required options are the Server URL and API Key. It is planned update this to have the API Key as not required. 
+But the only required option is the Server URL. If no API Key is provided, the client will not set the Authorization header when attempting to connect to the server.
 
 After building the client, you receive an `IMessagingClient` instance to interact with the server.
 
@@ -68,7 +68,6 @@ Once built, connect asynchronously:
 ```csharp
 await client.ConnectAsync();
 ```
-
 The SDK will handle incoming messages in the background.
 
 ## Publishing Messages

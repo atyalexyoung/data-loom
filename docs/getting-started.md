@@ -11,11 +11,20 @@ NOTE: These getting started notes are applicable now, but in future work the Dat
 1. Clone the repo:
 2. build the go project at /server/cmd/data-loom-server/main.go
 3. Set environment variables for configuration:
-    - MY_SERVER_KEY for the API key that you want clients to send as the Authorization header in intial connect message to server
+
+    - MY_SERVER_KEY for the API key that you want clients to send as the Authorization header in intial connect message to server. The default is no API Key required and the server will accept all connections.
+
     - STORAGE_TYPE for the type of underlying storage to use. The current options are:
         - badger
         - sqlite
-    - STORAGE_PATH sets the path to location of where the persistent storage actually keeps its files (e.g. .db file for sqlite)
+        - none (same as default for no-persistence)
+        - "" (empty string, same as default for no-persistence)
+        
+        The default is no-persistence and nothing will be stored
+        .
+    - STORAGE_PATH sets the path to location of where the persistent storage actually keeps its files (e.g. .db file for sqlite). The default is under "/tmp/data/"
+    
+    - PORT_NUMBER sets the port number that the server will serve on. The default is 8080.
 4. Run the server and it will be on port 8080 by default. Configuration for this is planned.
 
 ## Using C# Client

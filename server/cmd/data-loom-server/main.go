@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,7 +48,7 @@ func main() {
 	wsServer := server.NewWebSocketServer(clientHub, topicManager, cfg)
 
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf(":%d", cfg.PortNumber),
 		Handler: wsServer.Handler(),
 	}
 
