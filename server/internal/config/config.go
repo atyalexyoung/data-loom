@@ -20,8 +20,8 @@ func Load() *Config {
 		log.Debug("Successful setting api key for server from config")
 		cfg.APIKey = envKey
 	} else {
-		log.Debug("Couldn't read in api key from config. Setting as default of data-loom-api-key")
-		cfg.APIKey = "data-loom-api-key"
+		log.Debug("Couldn't read in api key from config. Setting as default of empty string")
+		cfg.APIKey = ""
 	}
 
 	if sType := os.Getenv("STORAGE_TYPE"); sType != "" {

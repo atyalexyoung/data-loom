@@ -98,10 +98,6 @@ namespace DataLoom.SDK.Builders
             {
                 throw new InvalidOperationException("Server URL null, empty or whitespace.");
             }
-            if (_options.ApiKey == null)
-            {
-                throw new InvalidOperationException("API key was null.");
-            }
             var client = new MessagingClient(_options);
             return client;
         }

@@ -64,10 +64,7 @@ namespace DataLoom.SDK.Clients
             {
                 throw new InvalidOperationException("Server URL cannot be null or whitespace.");
             }
-            if (_options.ApiKey == null)
-            {
-                throw new InvalidOperationException("API key cannot be null or whitespace.");
-            }
+            // if the API key is null we will just not supply one.
         }
 
 
@@ -78,7 +75,11 @@ namespace DataLoom.SDK.Clients
         public async Task ConnectAsync()
         {
             var uri = new Uri(_options.ServerUrl!);
-            _webSocket.Options.SetRequestHeader("Authorization", _options.ApiKey);
+            if (_options.ApiKey != null)
+            {
+                _webSocket.Options.SetRequestHeader("Authorization", _options.ApiKey);
+            }
+            
             _webSocket.Options.SetRequestHeader("ClientId", _options.ClientId);
             await _webSocket.ConnectAsync(uri, CancellationToken.None);
 

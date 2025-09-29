@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,7 +77,6 @@ func NewWebSocketServer(hub *network.ClientHub, topicManager topic.TopicManager,
 
 	/*
 		FUTURE HANDLERS
-		s.registerHandler("list", s.list, s.requireTopic)
 		s.registerHandler("publishMany", s.getHandler, s.requireTopic)
 		s.registerHandler("sendWithoutSave", s.registerTopicHandler, s.requireTopic, s.requireData)
 		s.registerHandler("deleteManyTopics", s.unregisterTopicHandler, s.requireTopic)
@@ -105,22 +105,18 @@ func (s *WebSocketServer) SendToClient(c *network.Client, message any) {
 	}
 }
 
-// Will authenticate the token that is passed with the configured API key
-func (s *WebSocketServer) authToken(token string) bool {
-	return token == s.config.APIKey
-}
-
 // handleWebSocket is the main websocket handler that will loop to read incoming
 // data from a client. This is a goroutine under the hood as handled by gorilla/websocket
 // and each client will get their own handleWebSocket handler.
 func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
-	// get token for auth
-	token := r.Header.Get("Authorization")
-	if !s.authToken(token) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+	if s.config.APIKey != "" {
+		apiKey := strings.TrimSpace(r.Header.Get("Authorization"))
+		if apiKey != s.config.APIKey {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	} // else the API key not required.
 
 	clientID := r.Header.Get("ClientId")
 	if clientID == "" {
