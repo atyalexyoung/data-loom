@@ -1,5 +1,5 @@
 using DataLoom.SDK.Clients;
-using DataLoom.SDK.interfaces;
+using DataLoom.SDK.Interfaces;
 
 namespace DataLoom.SDK.Builders
 {

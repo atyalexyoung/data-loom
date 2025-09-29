@@ -2,7 +2,7 @@ using DataLoom.SDK.Exceptions;
 using DataLoom.SDK.Models;
 using DataLoom.SDK.Subscriptions;
 
-namespace DataLoom.SDK.interfaces
+namespace DataLoom.SDK.Interfaces
 {
     /// <summary>
     /// IMessagingClient is the interface for interacting with a messaging server.
@@ -20,13 +20,25 @@ namespace DataLoom.SDK.interfaces
         /// 
         /// After a successful connection, the receive loop is started in a fire-and-forget task. 
         /// Exceptions thrown inside the receive loop will not propagate to this method. 
-        /// Consider monitoring them via logging or events if you need to handle fatal errors during message processing.
         /// </remarks>
         /// <exception cref="WebSocketException">Thrown if the connection to the server fails.</exception>
         /// <exception cref="ArgumentException">Thrown if the server URL is invalid.</exception>
         /// <exception cref="UriFormatException">Thrown if the server URL is not a valid URI.</exception>
         /// <exception cref="InvalidOperationException">Thrown if the WebSocket is already connected or if options are invalid.</exception>
         Task ConnectAsync();
+
+        /// <summary>
+        /// Disconnects the client from the server.
+        /// </summary>
+        /// <remarks>
+        /// This method asynchronously closes a WebSocket connection to the server. 
+        /// If something goes wrong with the disconnect, it will throw a  
+        /// </remarks>
+        /// <exception cref="WebSocketException">Thrown if the connection to the server fails.</exception>
+        /// <exception cref="ArgumentException">Thrown if the server URL is invalid.</exception>
+        /// <exception cref="UriFormatException">Thrown if the server URL is not a valid URI.</exception>
+        /// <exception cref="InvalidOperationException">Thrown if the WebSocket is already connected or if options are invalid.</exception>
+        Task DisconnectAsync();
 
         /// <summary>
         /// Subscribes to a topic with the specified name and handles incoming messages using the provided callback.
