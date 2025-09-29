@@ -11,9 +11,9 @@ This documentation is planned to be expanded upon.
 ## Configuration
 | Env Var        | Description                               | Default             |
 |----------------|-------------------------------------------|---------------------|
-| `MY_SERVER_KEY`| API key required in `Authorization` header. If not set or blank, the server will not check for an `Authorization` header and accept all incoming connection requests (If Client ID is valid)  | `""`                |
-| `STORAGE_TYPE` | Storage backend (`badger`, `sqlite`, `none`, or `""`)    | `""`                |
-| `STORAGE_PATH` | Path to data directory or DB file         | `./tmp/data/`            |
+| `MY_SERVER_KEY`| API key required in `Authorization` header. If not set or blank, the server will not check for an `Authorization` header and accept all incoming connection requests (If Client ID is valid)  | `""`  |
+| `STORAGE_TYPE` | Storage backend (`badger`, `sqlite`, `none`, or `""`)    | `""` |
+| `STORAGE_PATH` | Path to data directory or DB file         | `./tmp/data/`       |
 | `PORT_NUMBER`  | WebSocket server port                     | `8080`              |
 
 ## Running
