@@ -28,7 +28,7 @@ func Load() *Config {
 		log.Debugf("Successfully read storage type as: %s", sType)
 		cfg.StorageType = sType
 	} else {
-		log.Debugf("Couldn't read storage type. Setting as default of no persistence")
+		log.Debugf("Couldn't read storage type. Setting as default of blank string for no-persistence.")
 		cfg.StorageType = ""
 	}
 
