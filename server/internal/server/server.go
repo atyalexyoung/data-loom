@@ -251,11 +251,7 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 	var syntaxErr *json.SyntaxError
 	if errors.As(err, &syntaxErr) {
 		ctx.WithField("offset", syntaxErr.Offset).Error("JSON syntax error")
-		s.sender.SendToClient(client, network.Response{
-			MessageId: "UNKNOWN",
-			Type:      "UNKOWN",
-			Code:      http.StatusBadRequest,
-		})
+		s.sender.SendToClient(client, network.NewResponse(network.WebSocketMessage{MessageId: "UNKNOWN", Action: "UNKNOWN"}, http.StatusBadRequest, err.Error(), nil))
 		return true
 	}
 
@@ -266,12 +262,7 @@ func (s *WebSocketServer) handleWebSocketError(err error, client *network.Client
 			"value":    typeErr.Value,
 			"offset":   typeErr.Offset,
 		}).Error("JSON type error")
-
-		s.sender.SendToClient(client, network.Response{
-			MessageId: "UNKNOWN",
-			Type:      "UNKOWN",
-			Code:      http.StatusBadRequest,
-		})
+		s.sender.SendToClient(client, network.NewResponse(network.WebSocketMessage{MessageId: "UNKNOWN", Action: "UNKNOWN"}, http.StatusBadRequest, err.Error(), nil))
 		return true
 	}
 

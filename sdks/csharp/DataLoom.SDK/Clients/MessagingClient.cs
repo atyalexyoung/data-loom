@@ -131,7 +131,7 @@ namespace DataLoom.SDK.Clients
 
                 var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
 
-                if (TryDeserialize<WebSocketResponse>(json, out var response))
+                if (TryDeserialize<WebSocketResponse>(json, out var response) && response != null && response.Type == "response")
                 {
                     if (response != null && !string.IsNullOrWhiteSpace(response.Id) &&
                         _pendingResponses.TryRemove(response.Id, out var tcs))
@@ -495,6 +495,8 @@ namespace DataLoom.SDK.Clients
         /// <exception cref="ServerException">Thrown if the validation fails (something is wrong with the message).</exception>
         private static void ValidateResponse(WebSocketResponse? response, string context)
         {
+            Console.WriteLine("Response: " + response);
+
             if (response == null)
                 throw new ServerException(-1, $"Received null response from server: {context}");
 

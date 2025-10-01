@@ -2,8 +2,8 @@ package topic
 
 import (
 	"fmt"
-	"sync"
 
+	"github.com/atyalexyoung/data-loom/server/internal/logging"
 	"github.com/atyalexyoung/data-loom/server/internal/network"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
@@ -17,7 +17,7 @@ import (
 // the subscribers are the ones that care about this topic.
 type Topic struct {
 	name         string
-	mu           sync.RWMutex
+	mu           logging.DebugRWMutex
 	subscribers  map[*network.Client]bool
 	schemas      map[int]*TopicSchema
 	latestSchema int
@@ -37,6 +37,7 @@ func NewTopic(name string, schema map[string]any) *Topic {
 		name:        name,
 		schemas:     make(map[int]*TopicSchema),
 		subscribers: make(map[*network.Client]bool),
+		mu:          *logging.NewDebugRWMutex("Topic: " + name),
 		// LatestSchema default to 0
 	}
 
@@ -50,25 +51,25 @@ func NewTopic(name string, schema map[string]any) *Topic {
 
 // LatestSchemaVersion will return the integer of the latest topic version.
 func (t *Topic) LatestSchemaVersion() int {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.RLock("LatestSchemaVersion")
+	defer t.mu.RUnlock("LatestSchemaVersion")
 	return t.latestSchema
 }
 
 // Name will return the name of the topic.
 func (t *Topic) Name() string {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.RLock("Name")
+	defer t.mu.RUnlock("Name")
 	return t.name
 }
 
 // Unsubscribe will remove the client to the map of subscribers
 func (t *Topic) Unsubscribe(client *network.Client) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.Lock("Unsubscribe")
+	defer t.mu.Unlock("Unsubscribe")
 	_, ok := t.subscribers[client]
 	if !ok { // the client is not subscribed.
-		return fmt.Errorf("cannot unsubscribe client from topic. client is not subscribed to topic. topic: %s, client: %s", t.Name(), client.Id)
+		return fmt.Errorf("cannot unsubscribe client from topic. client is not subscribed to topic. topic: %s, client: %s", t.name, client.Id)
 	}
 	delete(t.subscribers, client)
 	return nil
@@ -76,23 +77,23 @@ func (t *Topic) Unsubscribe(client *network.Client) error {
 
 // Subscribe will add the client to the map of subscribers
 func (t *Topic) Subscribe(client *network.Client) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.Lock("Subscribe")
+	defer t.mu.Unlock("Subscribe")
 	t.subscribers[client] = true
 }
 
 // IsClientSubscribed returns a bool if the client is in the map of subscribers.
 func (t *Topic) IsClientSubscribed(client *network.Client) bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.RLock("IsClientSubscribed")
+	defer t.mu.RUnlock("IsClientSubscribed")
 	_, ok := t.subscribers[client]
 	return ok
 }
 
 // ListSubscribers will get a list of network.Client type of all subscribers for the given topic
 func (t *Topic) ListSubscribers() []*network.Client {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.RLock("ListSubscribers")
+	defer t.mu.RUnlock("ListSubscribers")
 
 	clients := make([]*network.Client, 0, len(t.subscribers))
 	for c := range t.subscribers {
@@ -103,8 +104,11 @@ func (t *Topic) ListSubscribers() []*network.Client {
 
 // Update schema will update the schema of a topic, and return the new latest schema number.
 func (t *Topic) UpdateSchema(schema map[string]any) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.Lock("UpdateSchema")
+	defer func() {
+		log.WithFields(log.Fields{"method": "UpdateSchema", "topic": t.name}).Trace("updated topic schema")
+		t.mu.Unlock("UpdateSchema")
+	}()
 
 	t.latestSchema++
 	t.schemas[t.latestSchema] = &TopicSchema{
@@ -115,8 +119,8 @@ func (t *Topic) UpdateSchema(schema map[string]any) {
 
 // GetLatestSchema will get the schema from the most recent version.
 func (t *Topic) GetLatestSchema() (*TopicSchema, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.Lock("GetLatestSchema")
+	defer t.mu.Unlock("GetLatestSchema")
 
 	// If no schemas exist at all
 	if len(t.schemas) == 0 {
@@ -147,8 +151,8 @@ func (t *Topic) GetLatestSchema() (*TopicSchema, error) {
 
 // GetSchemaByVersion will get the schema for the topic of the given version interger.
 func (t *Topic) GetSchemaByVersion(versionNumber int) (*TopicSchema, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.Lock("GetSchemaByVersion")
+	defer t.mu.Unlock("GetSchemaByVersion")
 
 	schema, ok := t.schemas[t.latestSchema]
 	if !ok {
@@ -159,8 +163,8 @@ func (t *Topic) GetSchemaByVersion(versionNumber int) (*TopicSchema, error) {
 }
 
 func (t *Topic) Publish(sender *network.Client, msg *network.WebSocketMessage) []*network.Client {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.Lock("Publish")
+	defer t.mu.Unlock("Publish")
 
 	failedClients := make([]*network.Client, 0)
 

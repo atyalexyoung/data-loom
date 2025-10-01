@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/atyalexyoung/data-loom/server/internal/logging"
 	"github.com/atyalexyoung/data-loom/server/internal/network"
 	"github.com/atyalexyoung/data-loom/server/internal/storage"
 )
@@ -31,7 +31,7 @@ type TopicManager interface {
 
 // topicManager holds a map of the key for a key-value pair and the client that is subscribed to that key.
 type topicManager struct {
-	mu            sync.RWMutex
+	mu            *logging.DebugRWMutex
 	topics        map[string]*Topic
 	db            storage.Storage
 	failedClients chan *network.Client
@@ -42,6 +42,7 @@ func NewTopicManager(storage storage.Storage) TopicManager {
 		topics:        make(map[string]*Topic),
 		db:            storage,
 		failedClients: make(chan *network.Client, 100),
+		mu:            logging.NewDebugRWMutex("TopicManager"),
 	}
 }
 
@@ -52,15 +53,20 @@ func (tm *topicManager) NextFailedClient() (*network.Client, bool) {
 
 // will increment the amount of failures for a client in the
 func (tm *topicManager) markClientFailed(c *network.Client) {
-	tm.failedClients <- c
+	select {
+	case tm.failedClients <- c:
+		// enqueued success
+	default:
+		log.Warnf("failedClients channel full, dropping client %s", c.Id)
+	}
 }
 
 // Subscribe checks if the topic
 func (tm *topicManager) Subscribe(topicName string, client *network.Client) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+	tm.mu.RLock("Subscribe")
 	topic, exists := tm.topics[topicName]
+	tm.mu.RUnlock("Subscribe")
+
 	if !exists { // if topic doesn't exist, just let the user know
 		return fmt.Errorf("topic doesn't exist for %s", topicName)
 	}
@@ -71,10 +77,10 @@ func (tm *topicManager) Subscribe(topicName string, client *network.Client) erro
 
 // Unsubscribe removes a client from the subscription list for a given topic name.
 func (tm *topicManager) Unsubscribe(topicName string, client *network.Client) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+	tm.mu.RLock("Unsubscribe")
 	topic, ok := tm.topics[topicName]
+	tm.mu.RUnlock("Unsubscribe")
+
 	if !ok { // the topic doesn't exist to unsubscribe from, let user know
 		return fmt.Errorf("cannot unsubscribe client from topic. topic doesn't exits. topic: %s, client: %s", topicName, client.Id)
 	}
@@ -83,7 +89,10 @@ func (tm *topicManager) Unsubscribe(topicName string, client *network.Client) er
 
 // ListSubscribersForTopic returns a copy of the list of all clients that are subscribed to a given topic name.
 func (tm *topicManager) ListSubscribersForTopic(topicName string) ([]*network.Client, error) {
+	tm.mu.RLock("ListSubscribersForTopic")
 	topic, ok := tm.topics[topicName]
+	tm.mu.RUnlock("ListSubscribersForTopic")
+
 	if !ok {
 		return nil, fmt.Errorf("cannot get subscribers for topic. topic doesn't exist. Topic: %s", topicName)
 	}
@@ -92,12 +101,15 @@ func (tm *topicManager) ListSubscribersForTopic(topicName string) ([]*network.Cl
 
 // UnsubscribeAll removes a client from all topics.
 func (tm *topicManager) UnsubscribeAll(client *network.Client) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+	tm.mu.RLock("UnsubscribeAll")
+	topicsCopy := make([]*Topic, 0, len(tm.topics))
 	for _, topic := range tm.topics {
-		err := topic.Unsubscribe(client)
-		if err == nil { // if we get error, the client wasn't subscribed to topic
+		topicsCopy = append(topicsCopy, topic)
+	}
+	tm.mu.RUnlock("UnsubscribeAll")
+
+	for _, topic := range topicsCopy {
+		if err := topic.Unsubscribe(client); err == nil { // client wasn't subscribed to topic
 			log.Printf("Unsubscribed client: %s from topic: %s", client.Id, topic.Name())
 		}
 	}
@@ -106,9 +118,9 @@ func (tm *topicManager) UnsubscribeAll(client *network.Client) {
 // sendTopic will send the value passed in for a given topic to all the subscribers of that topic.
 func (tm *topicManager) sendTopic(ctx context.Context, msg network.WebSocketMessage, sender *network.Client, value map[string]any, persist bool, errCh chan error) error {
 	// get topic from tm and unlock
-	tm.mu.RLock()
+	tm.mu.RLock("sendTopic")
 	topic, ok := tm.topics[msg.Topic]
-	tm.mu.RUnlock()
+	tm.mu.RUnlock("sendTopic")
 
 	if !ok { // couldn't get topic, I guess it doesn't exist
 		return fmt.Errorf("publish failed. Topic doesn't exist. Topic: %s", msg.Topic)
@@ -132,7 +144,7 @@ func (tm *topicManager) sendTopic(ctx context.Context, msg network.WebSocketMess
 			"message_id": msg.MessageId,
 			"topic":      msg.Topic,
 			"time":       time,
-		}).Info("persisting message")
+		}).Info("calling async put on database")
 
 		dbErrChan = tm.db.AsyncPut(ctx, msg.Topic, value, time)
 	}
@@ -150,6 +162,7 @@ func (tm *topicManager) sendTopic(ctx context.Context, msg network.WebSocketMess
 	failedClients := topic.Publish(sender, outboundMessage)
 
 	for _, client := range failedClients {
+		log.WithFields(log.Fields{"client": client}).Warn("Client failed to be published to. Marking as failed client.")
 		tm.markClientFailed(client)
 	}
 
@@ -186,14 +199,15 @@ func (tm *topicManager) SendWithoutSave(ctx context.Context, msg network.WebSock
 
 // Get will retrieve the current value for a given topic
 func (tm *topicManager) Get(ctx context.Context, topicName string) (map[string]any, error) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+	tm.mu.RLock("Get")
 	topic, ok := tm.topics[topicName]
+	tm.mu.RUnlock("Get")
+
 	if !ok {
 		return nil, fmt.Errorf("couldn't get value for topic. topic doesn't exist. topic: %s", topicName)
 	}
 
+	log.WithFields(log.Fields{"method": "Get", "topic": topic.Name()}).Trace("getting topic from database.")
 	value, err := tm.db.Get(ctx, topic.Name())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get value for topic with error: %v", err)
@@ -204,19 +218,23 @@ func (tm *topicManager) Get(ctx context.Context, topicName string) (map[string]a
 // RegisterTopic takes a topic name and schema for the topic and will add it to list of topics.
 // This will create a schema of version 0 for the topic. Returns error if the topic already exists
 func (tm *topicManager) RegisterTopic(topicName string, schema map[string]any) (*Topic, error) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+	tm.mu.RLock("RegisterTopic")
 	currentTopic, ok := tm.topics[topicName]
+	tm.mu.RUnlock("RegisterTopic")
+
 	if ok { // if we get a topic, it already exists
 		curretSchema, err := currentTopic.GetLatestSchema()
+
 		if err == nil { // WE DID GET THE LATEST SCHEMA
 			if schemasMatch(curretSchema.Schema, schema) {
+				log.WithFields(log.Fields{"method": "RegisterTopic", "topic": topicName}).Trace("schema found, returning pre-existing topic")
 				return currentTopic, nil
+
 			} else { // schemas don't match, return error
 				return nil, fmt.Errorf("cannot register topic, topic already exists with different schema. Try updating schema")
 			}
 		} // else we couldn't get the latest schema, update the current topics schema.
+
 		currentTopic.UpdateSchema(schema)
 		return currentTopic, nil
 
@@ -224,31 +242,47 @@ func (tm *topicManager) RegisterTopic(topicName string, schema map[string]any) (
 	topic := NewTopic(topicName, schema)
 	tm.topics[topic.Name()] = topic // add new topic to topic manager
 
+	log.WithFields(log.Fields{"method": "RegisterTopic", "topic": topicName}).Trace("created and registered new topic")
+
 	return topic, nil
 }
 
 // schemasMatch will convert two map[string]any tol json and compare them to see if they are the same.
-func schemasMatch(a, b map[string]any) bool {
-	aBytes, err1 := json.Marshal(a)
-	bBytes, err2 := json.Marshal(b)
-	if err1 != nil || err2 != nil {
+func schemasMatch(schema, msg map[string]any) bool {
+	if len(schema) != len(msg) {
 		return false
 	}
-	return string(aBytes) == string(bBytes)
+	for key, val := range schema {
+		msgVal, ok := msg[key]
+		if !ok {
+			return false
+		}
+
+		// If the schema field is a nested map, validate recursively
+		if nestedSchema, ok := val.(map[string]any); ok {
+			msgNested, ok := msgVal.(map[string]any)
+			if !ok {
+				return false
+			}
+			if !schemasMatch(nestedSchema, msgNested) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // UnregisterTopic takes name of topic to unregister and removes it from the topics.
 // returns error if topic doesn't exist.
 func (tm *topicManager) UnregisterTopic(ctx context.Context, topicName string) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+	tm.mu.Lock("UnregisterTopic")
 	_, ok := tm.topics[topicName]
 	if !ok {
 		return fmt.Errorf("cannot unregister topic. topic doesn't exist with name: %s", topicName)
 	}
 
 	delete(tm.topics, topicName) // delete the key-value in the map
+	tm.mu.Unlock("UnregisterTopic")
 
 	if err := tm.db.Delete(ctx, topicName); err != nil {
 		return fmt.Errorf("Topic deleted but unable to delete from persistent storage with err: %v", err)
@@ -259,10 +293,8 @@ func (tm *topicManager) UnregisterTopic(ctx context.Context, topicName string) e
 
 // ListTopics will retreive all topics that are currently being used.
 func (tm *topicManager) ListTopics() ([]*Topic, error) {
-
-	// get topics copy and unlock manager
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
+	tm.mu.RLock("ListTopics")
+	defer tm.mu.RUnlock("ListTopics")
 
 	topicsCopy := make([]*Topic, 0, len(tm.topics))
 	for _, t := range tm.topics {
@@ -273,9 +305,9 @@ func (tm *topicManager) ListTopics() ([]*Topic, error) {
 }
 
 func (tm *topicManager) UpdateSchema(topicName string, schema map[string]any) error {
-	tm.mu.Lock()
+	tm.mu.RLock("UpdateSchema")
 	topic, ok := tm.topics[topicName]
-	tm.mu.Unlock()
+	tm.mu.RUnlock("UpdateSchema")
 
 	if !ok {
 		return fmt.Errorf("cannot update schema for topic %s. Topic doesn't exist", topicName)
@@ -286,9 +318,9 @@ func (tm *topicManager) UpdateSchema(topicName string, schema map[string]any) er
 
 // getLatestSchemaForTopic does what it says it will do. Gets the latest schema for a given topic.
 func (tm *topicManager) getLatestSchemaForTopic(topicName string) (*TopicSchema, error) {
-	tm.mu.Lock()
+	tm.mu.RLock("getLatestSchemaForTopic")
 	topic, ok := tm.topics[topicName]
-	tm.mu.Unlock()
+	tm.mu.RUnlock("getLatestSchemaForTopic")
 	if !ok {
 		return nil, fmt.Errorf("could not get topic by name: %s", topicName)
 	}

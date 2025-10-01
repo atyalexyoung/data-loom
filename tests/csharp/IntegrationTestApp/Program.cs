@@ -30,20 +30,25 @@ namespace IntegrationTestApp
             {
                 await client.ConnectAsync();
                 Console.WriteLine("Connected!");
+                await Task.Delay(1000);
 
                 // Register a topic using the ChatMessage type as schema
                 var topicSchema = new ChatMessage(); // instance used to infer schema
                 await client.RegisterTopicAsync<ChatMessage>("chat-room");
                 Console.WriteLine("Registered topic 'chat-room'.");
 
+                await Task.Delay(1000);
+
                 // Subscribe to the topic
                 var token = await client.SubscribeAsync<ChatMessage>("chat-room", async (message) =>
                 {
-                    Console.WriteLine($"[{message.Topic }]: Action: {message.Action}. Data: {message.Data}");
+                    Console.WriteLine($"[{message.Topic }]: Action: {message.Action}. Message: {message.Data.Message} from {message.Data.Sender} at {message.Data.Timestamp}");
                     
                     await Task.CompletedTask;
                 });
                 Console.WriteLine("Subscribed to 'chat-room'.");
+
+                await Task.Delay(1000);
 
                 // Publish a message
                 var outgoingMessage = new ChatMessage
@@ -57,11 +62,13 @@ namespace IntegrationTestApp
                 Console.WriteLine("Published message.");
 
                 // Allow time for messages to be received
-                await Task.Delay(5000);
+                await Task.Delay(1000);
 
                 // Cleanup
                 await client.UnsubscribeAsync("chat-room", token);
                 Console.WriteLine("Unsubscribed.");
+
+                await Task.Delay(1000);
 
                 await client.DisconnectAsync();
                 Console.WriteLine("Disconnected.");
@@ -72,7 +79,7 @@ namespace IntegrationTestApp
             }
 
             Console.WriteLine("Test complete. Press any key to exit.");
-            Console.ReadKey();
+            //Console.ReadKey();
         }
     }
 }

@@ -27,11 +27,7 @@ func parseJSON[T any](data json.RawMessage) (T, error) {
 func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg network.WebSocketMessage) {
 	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.MessageId)
 	if msg.RequireAck {
-		s.sender.SendToClient(c, network.Response{
-			MessageId: msg.MessageId,
-			Type:      msg.Action,
-			Code:      http.StatusOK,
-		})
+		s.sender.SendToClient(c, network.NewResponse(msg, http.StatusOK, "", nil))
 		logger.HandlerAck(c.Id, msg.Action, msg.Topic, msg.MessageId)
 	}
 }
@@ -39,44 +35,24 @@ func (s *WebSocketServer) AckResponseSuccess(c *network.Client, msg network.WebS
 // AckResponseData will handle logging and response with data to client.
 func (s *WebSocketServer) AckResponseSuccessWithData(c *network.Client, msg network.WebSocketMessage, data any) {
 	logger.HandlerSuccess(c.Id, msg.Action, msg.Topic, msg.MessageId)
-	s.sender.SendToClient(c, network.Response{
-		MessageId: msg.MessageId,
-		Type:      msg.Action,
-		Code:      http.StatusOK,
-		Data:      data,
-	})
+	s.sender.SendToClient(c, network.NewResponse(msg, http.StatusOK, "", data))
 	logger.HandlerAck(c.Id, msg.Action, msg.Topic, msg.MessageId)
 }
 
 // AckResponseError will handle logging and creating response to the client if an error has occured
 func (s *WebSocketServer) AckResponseError(c *network.Client, msg network.WebSocketMessage, err error) {
 	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.MessageId, err)
-	s.sender.SendToClient(c, network.Response{
-		MessageId: msg.MessageId,
-		Type:      msg.Action,
-		Code:      http.StatusInternalServerError,
-		Message:   err.Error(),
-	})
+	s.sender.SendToClient(c, network.NewResponse(msg, http.StatusInternalServerError, err.Error(), nil))
 }
 
 func (s *WebSocketServer) AckResponseBadRequest(c *network.Client, msg network.WebSocketMessage, err error) {
 	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.MessageId, err)
-	s.sender.SendToClient(c, network.Response{
-		MessageId: msg.MessageId,
-		Type:      msg.Action,
-		Code:      http.StatusBadRequest,
-		Message:   err.Error(),
-	})
+	s.sender.SendToClient(c, network.NewResponse(msg, http.StatusBadRequest, err.Error(), nil))
 }
 
 func (s *WebSocketServer) AckResponseDatabaseError(c *network.Client, msg network.WebSocketMessage, err error) {
 	logger.HandlerError(c.Id, msg.Action, msg.Topic, msg.MessageId, err)
-	s.sender.SendToClient(c, network.Response{
-		MessageId: msg.MessageId,
-		Type:      "persist",
-		Code:      http.StatusInternalServerError,
-		Message:   err.Error(),
-	})
+	s.sender.SendToClient(c, network.NewResponse(network.WebSocketMessage{MessageId: msg.MessageId, Action: "persist"}, http.StatusInternalServerError, err.Error(), nil))
 }
 
 // Will register a handler with the action string as the lookup for the handler,
@@ -86,13 +62,13 @@ func (s *WebSocketServer) AckResponseDatabaseError(c *network.Client, msg networ
 func (s *WebSocketServer) registerHandler(action string, handler HandlerFunc, decorators ...func(HandlerFunc) HandlerFunc) {
 	// gets the name using reflection to log that the handler was registered
 	name := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
-	log.Tracef("Registering handler for action=%s, function=%s", action, name)
 
 	final := handler
 	for _, dec := range decorators {
 		final = dec(final)
 	}
 	s.handlers[action] = final
+	log.WithFields(log.Fields{"action": action, "function": name}).Trace("registered handler")
 }
 
 // subscribeHandler handles subscription request, error handling from trying to subscribe
@@ -129,6 +105,7 @@ func (s *WebSocketServer) publishHandler(c *network.Client, msg network.WebSocke
 	if err != nil || !isMatch { // if we get an error, just blame it on client for now.
 		s.AckResponseBadRequest(c, msg, err)
 	}
+	log.WithFields(log.Fields{"topic": msg.Topic, "method": "publishHandler"}).Trace("schemas matched")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -166,7 +143,6 @@ func (s *WebSocketServer) unsubscribeAllHandler(c *network.Client, msg network.W
 // getHandler handles a request to get a topic value, errors from topic manager, and
 // sending response to requesting client.
 func (s *WebSocketServer) getHandler(c *network.Client, msg network.WebSocketMessage) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -180,7 +156,6 @@ func (s *WebSocketServer) getHandler(c *network.Client, msg network.WebSocketMes
 // registerTopicHandler handles a request to register a topic, error from topic manager from
 // operation, and sending response to the requesting client.
 func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg network.WebSocketMessage) {
-	// get schema from message
 	if msg.ParsedData == nil {
 		s.AckResponseBadRequest(c, msg, fmt.Errorf("data payload could not be parsed"))
 		return
@@ -197,7 +172,6 @@ func (s *WebSocketServer) registerTopicHandler(c *network.Client, msg network.We
 // unregisterTopicHandler handles request from client to unregister a topic, error from topic
 // manager doing work, and responding to the requesting client.
 func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg network.WebSocketMessage) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -212,7 +186,6 @@ func (s *WebSocketServer) unregisterTopicHandler(c *network.Client, msg network.
 // and translating slice of topics into a list of Topic Responses from topic manager,
 // and sending response to the client.
 func (s *WebSocketServer) listTopicsHandler(c *network.Client, msg network.WebSocketMessage) {
-
 	topics, err := s.topicManager.ListTopics()
 	if err != nil {
 		s.AckResponseError(c, msg, err)

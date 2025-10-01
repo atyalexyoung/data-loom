@@ -26,6 +26,11 @@ func (s *WebSocketServer) requireTopicDecorator(next HandlerFunc) HandlerFunc {
 			s.AckResponseBadRequest(c, msg, fmt.Errorf("no topic provided"))
 			return
 		}
+
+		log.WithFields(msg.GetLogFields()).
+			WithField("client", c.Id).
+			Trace("Require Topic Passed")
+
 		next(c, msg)
 	}
 }
@@ -50,6 +55,10 @@ func (s *WebSocketServer) requireDataDecorator(next HandlerFunc) HandlerFunc {
 		}
 		msg.ParsedData = payload
 
+		log.WithFields(msg.GetLogFields()).
+			WithField("client", c.Id).
+			Trace("Require Data Passed")
+
 		next(c, msg) // if we good, then move along.
 	}
 }
@@ -58,8 +67,18 @@ func (s *WebSocketServer) metricsDecorator(next HandlerFunc) HandlerFunc {
 	log.Trace("Returning metrics decorator")
 	return func(c *network.Client, msg network.WebSocketMessage) {
 		start := time.Now()
+		log.WithFields(msg.GetLogFields()).
+			WithField("client", c.Id).
+			WithField("time", start).
+			Debug("Started Metrics Decorator")
+
 		next(c, msg)
+
 		duration := time.Since(start)
-		log.Infof("Handling client: %s for msg type: %s, took %v", c.Id, msg.Action, duration)
+
+		log.WithFields(msg.GetLogFields()).
+			WithField("client", c.Id).
+			WithField("duration", duration).
+			Debug("Metrics Decorator Complete")
 	}
 }
