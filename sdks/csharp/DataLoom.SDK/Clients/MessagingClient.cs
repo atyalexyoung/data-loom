@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using DataLoom.SDK.Builders;
 using DataLoom.SDK.Exceptions;
 using DataLoom.SDK.Interfaces;
 using DataLoom.SDK.Models;
@@ -52,6 +51,11 @@ namespace DataLoom.SDK.Clients
         private CancellationTokenSource _receiveLoopCts = new();
 
         /// <summary>
+        /// Boolean that indicates if the client is connected to the server or not.
+        /// </summary>
+        public bool IsConnected { get; set; }
+
+        /// <summary>
         /// Main constructor for MessagingClient. Takes MessagingClientOptions instance for configuration.
         /// </summary>
         /// <param name="options">The <see cref="MessagingClientOptions"/> for configuration of client.</param>
@@ -82,7 +86,7 @@ namespace DataLoom.SDK.Clients
 
             _webSocket.Options.SetRequestHeader("ClientId", _options.ClientId);
             await _webSocket.ConnectAsync(uri, CancellationToken.None);
-
+            IsConnected = true;
             _receiveLoopCts = new CancellationTokenSource();
 
             _ = Task.Run(() => ReceiveLoopAsync(_receiveLoopCts));
@@ -96,22 +100,23 @@ namespace DataLoom.SDK.Clients
         public async Task DisconnectAsync()
         {
             try
-                {
-                    _receiveLoopCts?.Cancel();
+            {
+                _receiveLoopCts?.Cancel();
 
-                    if (_webSocket.State == WebSocketState.Open || _webSocket.State == WebSocketState.CloseReceived)
-                    {
-                        await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Client disconnecting", CancellationToken.None);
-                    }
-                }
-                catch (Exception ex)
+                if (_webSocket.State == WebSocketState.Open || _webSocket.State == WebSocketState.CloseReceived)
                 {
-                    Console.WriteLine($"Error during disconnect: {ex.Message}");
+                    await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Client disconnecting", CancellationToken.None);
                 }
-                finally
-                {
-                    _webSocket.Dispose();
-                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during disconnect: {ex.Message}");
+            }
+            finally
+            {
+                IsConnected = false;
+                _webSocket.Dispose();
+            }
         }
 
         /// <summary>

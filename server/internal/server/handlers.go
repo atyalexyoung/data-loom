@@ -195,11 +195,10 @@ func (s *WebSocketServer) listTopicsHandler(c *network.Client, msg network.WebSo
 	// get responses from topics
 	var response []network.TopicResponse
 	for _, topic := range topics {
-
-		// get schema from topic
+		// get latest schema from topic
 		var schemaResponse network.TopicSchemaResponse
 		if schema, err := topic.GetLatestSchema(); err != nil {
-			log.Errorf("Error when getting schema for topic: %s when getting list of topics.", topic.Name())
+			log.Errorf("Error when getting schema for topic: %s when getting list of topics.", topic.NameWithLock())
 		} else if schema != nil {
 			schemaResponse = network.TopicSchemaResponse{
 				Version: schema.Version,
@@ -208,7 +207,7 @@ func (s *WebSocketServer) listTopicsHandler(c *network.Client, msg network.WebSo
 		}
 
 		response = append(response, network.TopicResponse{
-			Name:   topic.Name(),
+			Name:   topic.NameWithLock(),
 			Schema: schemaResponse,
 		})
 	}

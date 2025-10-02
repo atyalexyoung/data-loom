@@ -56,8 +56,8 @@ func (t *Topic) LatestSchemaVersion() int {
 	return t.latestSchema
 }
 
-// Name will return the name of the topic.
-func (t *Topic) Name() string {
+// NameWithLock will return the name of the topic.
+func (t *Topic) NameWithLock() string {
 	t.mu.RLock("Name")
 	defer t.mu.RUnlock("Name")
 	return t.name

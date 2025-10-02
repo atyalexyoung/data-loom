@@ -110,7 +110,7 @@ func (tm *topicManager) UnsubscribeAll(client *network.Client) {
 
 	for _, topic := range topicsCopy {
 		if err := topic.Unsubscribe(client); err == nil { // client wasn't subscribed to topic
-			log.Printf("Unsubscribed client: %s from topic: %s", client.Id, topic.Name())
+			log.Printf("Unsubscribed client: %s from topic: %s", client.Id, topic.name)
 		}
 	}
 }
@@ -207,8 +207,8 @@ func (tm *topicManager) Get(ctx context.Context, topicName string) (map[string]a
 		return nil, fmt.Errorf("couldn't get value for topic. topic doesn't exist. topic: %s", topicName)
 	}
 
-	log.WithFields(log.Fields{"method": "Get", "topic": topic.Name()}).Trace("getting topic from database.")
-	value, err := tm.db.Get(ctx, topic.Name())
+	log.WithFields(log.Fields{"method": "Get", "topic": topic.name}).Trace("getting topic from database.")
+	value, err := tm.db.Get(ctx, topic.name)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get value for topic with error: %v", err)
 	}
@@ -240,7 +240,7 @@ func (tm *topicManager) RegisterTopic(topicName string, schema map[string]any) (
 
 	} // else we didn't get a topic so create new one.
 	topic := NewTopic(topicName, schema)
-	tm.topics[topic.Name()] = topic // add new topic to topic manager
+	tm.topics[topic.name] = topic // add new topic to topic manager
 
 	log.WithFields(log.Fields{"method": "RegisterTopic", "topic": topicName}).Trace("created and registered new topic")
 

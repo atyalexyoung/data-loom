@@ -11,6 +11,11 @@ namespace DataLoom.SDK.Interfaces
     public interface IMessagingClient
     {
         /// <summary>
+        /// Boolean that represents if the client is currently connected to the server or not.
+        /// </summary>
+        public bool IsConnected { get; set; }
+
+        /// <summary>
         /// Connects the client to the server using the configured URL and API key.
         /// </summary>
         /// <remarks>

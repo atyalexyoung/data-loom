@@ -1,0 +1,39 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // ====================
+    // C# Stress Tests
+    // ====================
+    {
+      "name": "C# Clients Test",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/tests/csharp/StressTestApp/bin/Debug/net8.0/StressTestApp.dll",
+      "args": ["clients"],
+      "cwd": "${workspaceFolder}/tests/csharp/StressTestApp",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "C# Frequency Test",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/tests/csharp/StressTestApp/bin/Debug/net8.0/StressTestApp.dll",
+      "args": ["frequency"],
+      "cwd": "${workspaceFolder}/tests/csharp/StressTestApp",
+      "console": "integratedTerminal"
+    },
+
+    // ====================
+    // Go Server
+    // ====================
+    {
+      "name": "Go Server",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/server/cmd/data-loom-server/main.go"
+    }
+  ]
+}
