@@ -129,46 +129,62 @@ namespace DataLoom.SDK.Clients
         {
             var buffer = new byte[8192];
 
-            while (_webSocket.State == WebSocketState.Open && !cts.IsCancellationRequested)
+            try
             {
-                var result = await _webSocket.ReceiveAsync(buffer, CancellationToken.None);
-                if (result.MessageType == WebSocketMessageType.Close) { break; }
-
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-
-                if (TryDeserialize<WebSocketResponse>(json, out var response) && response != null && response.Type == "response")
+                while (_webSocket.State == WebSocketState.Open && !cts.IsCancellationRequested)
                 {
-                    if (response != null && !string.IsNullOrWhiteSpace(response.Id) &&
-                        _pendingResponses.TryRemove(response.Id, out var tcs))
-                    {
-                        try
-                        {
-                            tcs.SetResult(response);
-                        }
-                        catch
-                        {
-                            // the timeout already happened so log that server too slow
-                        }
-                    }
-                    continue;
-                }
+                    var result = await _webSocket.ReceiveAsync(buffer, CancellationToken.None);
+                    if (result.MessageType == WebSocketMessageType.Close) { break; }
 
-                if (TryDeserialize<WebSocketMessage<JsonElement>>(json, out var msg))
-                {
-                    if (msg == null || string.IsNullOrWhiteSpace(msg.Topic))
+                    var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
+                    if (TryDeserialize<WebSocketResponse>(json, out var response) && response != null && response.Type == "response")
                     {
-                        // log that null message received
+                        if (response != null && !string.IsNullOrWhiteSpace(response.Id) &&
+                            _pendingResponses.TryRemove(response.Id, out var tcs))
+                        {
+                            try
+                            {
+                                tcs.SetResult(response);
+                            }
+                            catch
+                            {
+                                // the timeout already happened so log that server too slow
+                            }
+                        }
                         continue;
                     }
 
-                    await _subscriptionManager.DispatchAsync(msg!);
-                    continue;
+                    if (TryDeserialize<WebSocketMessage<JsonElement>>(json, out var msg))
+                    {
+                        if (msg == null || string.IsNullOrWhiteSpace(msg.Topic))
+                        {
+                            // log that null message received
+                            continue;
+                        }
+
+                        await _subscriptionManager.DispatchAsync(msg!);
+                        continue;
+                    }
+
+                    // log that message was recieved but couldn't be read.
                 }
 
-                // log that message was recieved but couldn't be read.
-            }
+                // log that the websocket was not open or cancellation was requested.
 
-            // log that the websocket was not open or cancellation was requested.
+            }
+            catch (WebSocketException ex)
+            {
+                Console.WriteLine("[ReceiveLoop] WebSocketException: " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[ReceiveLoop] Exception: " + ex.Message);
+            }
+            finally
+            {
+                IsConnected = false;
+            }
         }
 
         /// <summary>

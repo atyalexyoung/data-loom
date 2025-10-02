@@ -68,6 +68,12 @@ Once built, connect asynchronously:
 ```csharp
 await client.ConnectAsync();
 ```
+
+You can check if the client is connected with
+```csharp
+bool isConnected = client.IsConnected;
+```
+
 The SDK will handle incoming messages in the background.
 
 ## Publishing Messages

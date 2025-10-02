@@ -7,6 +7,8 @@ NOTE: These getting started notes are applicable now, but in future work the Dat
 - .NET 8 SDK installed (if using the C# client)
 - Docker (optional, if using the Docker container)
 
+The main development environment uses a devcontainer which should get everything you need. The only thing that needs fixing is the ssh key paths in the .devcontainer/devcontainer.json, which are mostly just for doing git commands while in the devcontainer.
+
 ## Running the Go Server
 1. Clone the repo:
 2. build the go project at /server/cmd/data-loom-server/main.go
@@ -25,13 +27,13 @@ NOTE: These getting started notes are applicable now, but in future work the Dat
     - STORAGE_PATH sets the path to location of where the persistent storage actually keeps its files (e.g. .db file for sqlite). The default is under "/tmp/data/"
     
     - PORT_NUMBER sets the port number that the server will serve on. The default is 8080.
-4. Run the server and it will be on port 8080 by default. Configuration for this is planned.
+
+4. Run the server and it will be on port 8080 by default or whatever you configured it to be on.
 
 ## Using C# Client
 NOTE: This is planned to be a NuGet package, but isn't currently.
 1. Build the SDK at /sdks/csharp/DataLoom.SDK/
 2. See the [C# SDK documentation](/docs/csharp-client.md) file for how to use the C# specific SDK.
-
 
 ## Raw Web Socket Connection
 If there isn't an SDK for a particular langauge you want to use, then you can still use the service by manually connecting to the server. 

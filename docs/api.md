@@ -37,7 +37,8 @@ Messages are JSON objects that match the following schema:
 ```jsonc
 {
   "id": "unique-request-id",
-  "type": "subscribe",
+  "action": "subscribe",
+  "type": "response",
   "code": 200,
   "message": "OK or error message",
   "data": { ... }                   // optional payload
@@ -47,6 +48,8 @@ Messages are JSON objects that match the following schema:
 Messages that have ACKs will not respond with ACKs if the requireAck field is false. The server will only send back an ACK response if this field is true.
 
 ACKs from the server are the same format as responses. Messages that have responses reguardless of the requireAck field contain information in the data field and are the "get" and "listTopics" actions.
+
+The ```type``` in the response should always be ```response``` and is to help distinguish between messages and responses when receiving on the web socket.
 
 
 ### Actions Overview
@@ -117,7 +120,6 @@ When subscribing to a topic, you will get the entire Web Socket Message that the
 ```
 
 This means that in order to get the updated topic information, you will have to access the "data" field. This also includes the sender ID, which is set upon connection with the server. The server fills this field in when sending to other clients based on the ID that is provided when the client first connected to the server. 
-
 
 
 ### Errors and Status Codes
