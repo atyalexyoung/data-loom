@@ -1,9 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+
+    <PackageId>DataLoom.CSharp</PackageId>
+    <Title>Data Loom C# SDK</Title>
+    <Version>0.1.0</Version>
+    <Authors>Alex Young</Authors>
+    <Description>A C# client SDK for Data Loom, a learning project for pub/sub messaging with persistence.</Description>
+    <PackageProjectUrl>https://github.com/atyalexyoung/data-loom</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/atyalexyoung/data-loom</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>messaging pubsub websocket csharp sdk</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Include="../../../README.md" Pack="true" PackagePath="\" Link="README.md" />
+  </ItemGroup>
 </Project>

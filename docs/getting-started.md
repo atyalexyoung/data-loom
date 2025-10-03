@@ -3,32 +3,50 @@
 NOTE: These getting started notes are applicable now, but in future work the DataLoom Go server is planned to be a pre-built binary, and all SDKs will be packages with whatever the associated language's package management system is (e.g. NuGet for C#, NPM for TypeScript).
 
 ## Prerequisites
-- Go 1.20+ installed
-- .NET 8 SDK installed (if using the C# client)
-- Docker (optional, if using the Docker container)
-
 The main development environment uses a devcontainer which should get everything you need. The only thing that needs fixing is the ssh key paths in the .devcontainer/devcontainer.json, which are mostly just for doing git commands while in the devcontainer.
 
-## Running the Go Server
-1. Clone the repo:
-2. build the go project at /server/cmd/data-loom-server/main.go
-3. Set environment variables for configuration:
+Without devcontainers you will need:
+- Go 1.20+ (optional, only if building the server from source)
+- .NET 8 SDK (if using the C# client)
 
-    - MY_SERVER_KEY for the API key that you want clients to send as the Authorization header in intial connect message to server. The default is no API Key required and the server will accept all connections.
+## Running Go Server
 
-    - STORAGE_TYPE for the type of underlying storage to use. The current options are:
-        - badger
-        - sqlite
-        - none (same as default for no-persistence)
-        - "" (empty string, same as default for no-persistence)
-        
-        The default is no-persistence and nothing will be stored
-        .
-    - STORAGE_PATH sets the path to location of where the persistent storage actually keeps its files (e.g. .db file for sqlite). The default is under "/tmp/data/"
+### Pre-built binaries
+Prebuilt server binaries are available for convenience:
+
+- [GitHub Releases](https://github.com/atyalexyoung/data-loom/releases) contain:
+  - `data-loom-server-linux-amd64.zip`
+  - `data-loom-server-windows-amd64.zip`
+  - `data-loom-server-darwin-arm64.zip`
+  - `data-loom-server-darwin-arm64.zip`
+
+Unzip the binary for your platform and run it directly. Go installation is **not required** to use the prebuilt binary.
+
+### Running the Go Server
+If you want to build from source:
+
+```bash
+git clone https://github.com/atyalexyoung/data-loom.git
+cd server/cmd/data-loom-server
+go build -o data-loom-server
+./data-loom-server
+```
+
+## Set environment variables for server configuration:
+- MY_SERVER_KEY for the API key that you want clients to send as the Authorization header in intial connect message to server. The default is no API Key required and the server will accept all connections.
+
+- STORAGE_TYPE for the type of underlying storage to use. The current options are:
+    - badger
+    - sqlite
+    - none (same as default for no-persistence)
+    - "" (empty string, same as default for no-persistence)
     
-    - PORT_NUMBER sets the port number that the server will serve on. The default is 8080.
+    The default is no-persistence and nothing will be stored
+    .
+- STORAGE_PATH sets the path to location of where the persistent storage actually keeps its files (e.g. .db file for sqlite). The default is under "/tmp/data/"
 
-4. Run the server and it will be on port 8080 by default or whatever you configured it to be on.
+- PORT_NUMBER sets the port number that the server will serve on. The default is 8080.
+
 
 ## Using C# Client
 NOTE: This is planned to be a NuGet package, but isn't currently.

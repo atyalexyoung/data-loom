@@ -4,15 +4,15 @@ The C# SDK for Data Loom provides an abstraction over the WebSocket API for inte
 
 > Note: This SDK is currently untested and planned to be distributed as a NuGet package in the future so the setup and usage will change.
 
-## Prerequisites
-
-- .NET 8 SDK installed
-- Access to a running Data Loom server (see Getting Started)
 
 ## Installation
 
-Currently, the SDK is not published as a package. To use it:
+The C# SDK is now published as a NuGet package:
+```
+dotnet add package DataLoom.CSharp --version 0.1.0
+```
 
+Or you can get the references from source:
 1. Clone the repository.
 2. Build the SDK project located at `/sdks/csharp/DataLoom.SDK/`.
 3. Add a reference to the compiled library in your C# project.

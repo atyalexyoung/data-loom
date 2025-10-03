@@ -43,7 +43,9 @@ Currently there is only [Badger](https://github.com/hypermodeinc/badger?tab=read
 - Core functionality implemented: topic creation, subscription, publishing, persistence.
 - Some simple tests in place for message sending and receiving, along with simple stress tests, but not very robust yet.
 - Not yet fully hardened for production use.
-- Super basic auth with api key that is passed with inital Authorization header.
+- Super basic auth with api key that is passed with initial Authorization header.
+- **Server binaries** for Linux, Windows, and macOS are available in the [GitHub Releases](https://github.com/atyalexyoung/data-loom/releases).
+- **C# SDK** is published as a [NuGet package](https://www.nuget.org/packages/DataLoom.CSharp/) and can be installed directly in projects.
 
 ## Upcoming
 - C# SDK is created with some testing + stress testing
