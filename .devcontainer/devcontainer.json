@@ -17,7 +17,8 @@
         }
     },
     "forwardPorts": [
-        50051
+        50051,
+        8080
     ],
     "mounts": [
         // Mount SSH keys

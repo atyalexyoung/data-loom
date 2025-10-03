@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Globalization;
+
 using DataLoom.SDK.Interfaces;
 using DataLoom.SDK.Subscriptions;
 using IntegrationTests.Helpers;
@@ -9,176 +7,152 @@ using IntegrationTests.Models;
 namespace DataLoomStressTest
 {
     internal partial class Program
-    {   
+    {
         private static async Task RunMessageFrequencyTest()
         {
-            // Configurable parameters per run
-            const int clientCount = 20;   // keep this fixed across runs
-            const int msgPerSecond = 100;  // vary this per run!
+            const int clientCount = 20;
+            const int msgPerSecond = 700; // moderate rate
             const int testDurationSec = 30;
             const string resultsFile = "freq_results.csv";
 
-            var topics = new[] { "chat", "alerts", "metrics", "logs" }; // hardcoded topics
-
-            Console.WriteLine($"Starting stress test with {clientCount} clients, " +
-                              $"{msgPerSecond} msgs/sec for {testDurationSec} sec...");
+            var topics = new[] { "chat", "alerts", "metrics", "logs" };
+            Console.WriteLine($"Starting stress test with {clientCount} clients, {msgPerSecond} msgs/sec for {testDurationSec} sec...");
 
             var clients = new IMessagingClient[clientCount];
-            var subscriptions = new List<SubscriptionToken>[clientCount];
+            var subscriptions = new Dictionary<string, SubscriptionToken>[clientCount];
+            var roundTripTimes = new List<long>();
+            var failures = new List<string>();
+            var rand = new Random();
 
-            var roundTripTimes = new ConcurrentBag<long>();
-            var failures = new ConcurrentBag<string>();
-
-            // 1. Connect all clients
-            await Task.WhenAll(Enumerable.Range(0, clientCount).Select(async i =>
+            // 1. Connect clients
+            for (int i = 0; i < clientCount; i++)
             {
                 var client = TestClientFactory.BuildClient($"client-{i}");
                 try
                 {
                     await client.ConnectAsync();
                     clients[i] = client;
-                    subscriptions[i] = new List<SubscriptionToken>();
+                    subscriptions[i] = new Dictionary<string, SubscriptionToken>();
                 }
                 catch (Exception ex)
                 {
                     failures.Add($"Client {i} failed to connect: {ex.Message}");
                 }
-            }));
-            Console.WriteLine("All clients connected.");
-
-            // 2. Register all topics (once)
-            foreach (var topic in topics)
-            {
-                await clients[0].RegisterTopicAsync<ChatMessage>(topic);
             }
 
-            // 3. Randomly subscribe clients to subset of topics
-            var rand = new Random();
-            await Task.WhenAll(Enumerable.Range(0, clientCount).Select(async i =>
+            // 2. Register topics once
+            await clients[0].RegisterTopicAsync<ChatMessage>("chat");
+            await clients[0].RegisterTopicAsync<AlertMessage>("alerts");
+            await clients[0].RegisterTopicAsync<MetricMessage>("metrics");
+            await clients[0].RegisterTopicAsync<LogMessage>("logs");
+
+            // 3. Subscribe clients (sequentially, low memory)
+            for (int i = 0; i < clientCount; i++)
             {
-                try
+                foreach (var topic in topics)
                 {
-                    var chosenTopics = topics.Where(_ => rand.NextDouble() < 0.5).ToList();
-                    foreach (var topic in chosenTopics)
+                    SubscriptionToken token = topic switch
                     {
-                        if (topic == "chat")
-                            subscriptions[i].Add(await clients[i].SubscribeAsync<ChatMessage>(topic, async msg =>
-                            {
-                                RecordRt(msg.Data.Timestamp, roundTripTimes);
-                                await Task.CompletedTask;
-                            }));
-                        else if (topic == "alerts")
-                            subscriptions[i].Add(await clients[i].SubscribeAsync<AlertMessage>(topic, async msg =>
-                            {
-                                RecordRt(msg.Data.Timestamp, roundTripTimes);
-                                await Task.CompletedTask;
-                            }));
-                        else if (topic == "metrics")
-                            subscriptions[i].Add(await clients[i].SubscribeAsync<MetricMessage>(topic, async msg =>
-                            {
-                                RecordRt(msg.Data.Timestamp, roundTripTimes);
-                                await Task.CompletedTask;
-                            }));
-                        else if (topic == "logs")
-                            subscriptions[i].Add(await clients[i].SubscribeAsync<LogMessage>(topic, async msg =>
-                            {
-                                RecordRt(msg.Data.Timestamp, roundTripTimes);
-                                await Task.CompletedTask;
-                            }));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    failures.Add($"Client {i} failed to subscribe: {ex.Message}");
-                }
-            }));
-            Console.WriteLine("All clients subscribed.");
-
-            // 4. Start publishers (fixed frequency across testDurationSec)
-            var publishTasks = new List<Task>();
-            var sw = Stopwatch.StartNew();
-            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(testDurationSec));
-
-            // Publisher loop: select random client + random topic each tick
-            publishTasks.Add(Task.Run(async () =>
-            {
-                var intervalMs = 1000.0 / msgPerSecond;
-                var nextTick = sw.ElapsedMilliseconds;
-
-                while (!cts.IsCancellationRequested)
-                {
-                    var clientIdx = rand.Next(clientCount);
-                    var topic = topics[rand.Next(topics.Length)];
-                    var msg = new ChatMessage
-                    {
-                        Sender = $"client-{clientIdx}",
-                        Message = $"Hello from {clientIdx} at {DateTime.UtcNow:O}",
-                        Timestamp = DateTime.UtcNow
+                        "chat" => await clients[i].SubscribeAsync<ChatMessage>(topic, msg => { RecordRt(msg.Data.Timestamp, roundTripTimes); return Task.CompletedTask; }),
+                        "alerts" => await clients[i].SubscribeAsync<AlertMessage>(topic, msg => { RecordRt(msg.Data.Timestamp, roundTripTimes); return Task.CompletedTask; }),
+                        "metrics" => await clients[i].SubscribeAsync<MetricMessage>(topic, msg => { RecordRt(msg.Data.Timestamp, roundTripTimes); return Task.CompletedTask; }),
+                        "logs" => await clients[i].SubscribeAsync<LogMessage>(topic, msg => { RecordRt(msg.Data.Timestamp, roundTripTimes); return Task.CompletedTask; }),
+                        _ => null
                     };
-
-                    try
-                    {
-                        await clients[clientIdx].PublishAsync(topic, msg);
-                    }
-                    catch (Exception ex)
-                    {
-                        failures.Add($"Client {clientIdx} failed to publish: {ex.Message}");
-                    }
-
-                    nextTick += (long)intervalMs;
-                    var delay = nextTick - sw.ElapsedMilliseconds;
-                    if (delay > 0) await Task.Delay((int)delay);
+                    if (token != null) subscriptions[i][topic] = token;
                 }
-            }));
+            }
 
-            await Task.WhenAll(publishTasks);
-            sw.Stop();
+            // 4. Start one async loop per client for publishing
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(testDurationSec));
+            var publisherTasks = new List<Task>();
 
-            // 5. Collect results
-            await Task.Delay(2000); // let last messages arrive
+            foreach (var clientIdx in Enumerable.Range(0, clientCount))
+            {
+                publisherTasks.Add(Task.Run(async () =>
+                {
+                    var intervalMs = 1000.0 / msgPerSecond;
+                    while (!cts.Token.IsCancellationRequested)
+                    {
+                        string topic = topics[rand.Next(topics.Length)];
+                        object msg = topic switch
+                        {
+                            "chat" => new ChatMessage { Sender = $"client-{clientIdx}", Message = "Hello", Timestamp = DateTime.UtcNow },
+                            "alerts" => new AlertMessage { Level = $"client-{clientIdx}", Message = "Alert", Timestamp = DateTime.UtcNow },
+                            "metrics" => new MetricMessage { Name = $"client-{clientIdx}", Value = rand.NextDouble(), Timestamp = DateTime.UtcNow },
+                            "logs" => new LogMessage { Source = $"client-{clientIdx}", Message = "Log", Timestamp = DateTime.UtcNow },
+                            _ => null
+                        };
+
+                        if (msg != null)
+                        {
+                            try
+                            {
+                                _ = topic switch
+                                {
+                                    "chat" => clients[clientIdx].PublishAsync(topic, (ChatMessage)msg),
+                                    "alerts" => clients[clientIdx].PublishAsync(topic, (AlertMessage)msg),
+                                    "metrics" => clients[clientIdx].PublishAsync(topic, (MetricMessage)msg),
+                                    "logs" => clients[clientIdx].PublishAsync(topic, (LogMessage)msg),
+                                    _ => Task.CompletedTask
+                                };
+                            }
+                            catch (Exception ex)
+                            {
+                                failures.Add($"Client {clientIdx} failed to publish: {ex.Message}");
+                            }
+                        }
+
+                        try
+                        {
+                            await Task.Delay((int)intervalMs, cts.Token);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            // Test finished, exit loop
+                            break;
+                        }
+                    }
+                }));
+            }
+
+            // 5. Wait for test duration
+            await Task.WhenAll(publisherTasks);
+
+            // 6. Collect metrics
             var received = roundTripTimes.Count;
             var avg = received > 0 ? roundTripTimes.Average() : 0;
             var min = received > 0 ? roundTripTimes.Min() : 0;
             var max = received > 0 ? roundTripTimes.Max() : 0;
 
-            Console.WriteLine("==== Frequency Test Metrics ====");
-            Console.WriteLine($"Clients: {clientCount}");
-            Console.WriteLine($"Topics: {topics.Length}");
-            Console.WriteLine($"Msg/s: {msgPerSecond}");
-            Console.WriteLine($"Duration (s): {testDurationSec}");
-            Console.WriteLine($"Failures: {failures.Count}");
-            Console.WriteLine($"Messages received: {received}");
-            Console.WriteLine($"Avg round-trip (ms): {avg:F2}");
-            Console.WriteLine($"Min round-trip (ms): {min}");
-            Console.WriteLine($"Max round-trip (ms): {max}");
+            WriteMessageFrequencyResultsToCsv(
+                resultsFile,
+                clientCount,
+                topics.Length,
+                msgPerSecond,
+                testDurationSec,
+                failures.Count,
+                received,
+                avg,
+                min,
+                max);
 
-            // 6. Write summary to CSV
-            WriteMessageFrequencyResultsToCsv(resultsFile, clientCount, topics.Length, msgPerSecond, testDurationSec,
-                failures.Count, received, avg, min, max);
+            Console.WriteLine($"Failures: {failures.Count}, Messages received: {received}, Avg RT: {avg:F2} ms, Min: {min}, Max: {max}");
 
             // 7. Cleanup
-            await Task.WhenAll(Enumerable.Range(0, clientCount).Select(async i =>
+            for (int i = 0; i < clientCount; i++)
             {
-                try
-                {
-                    foreach (var sub in subscriptions[i])
-                        await clients[i].UnsubscribeAsync("unused", sub); // unsub
-                    await clients[i].DisconnectAsync();
-                }
-                catch { }
-            }));
+                foreach (var kvp in subscriptions[i])
+                    await clients[i].UnsubscribeAsync(kvp.Key, kvp.Value);
+                await clients[i].DisconnectAsync();
+            }
 
             Console.WriteLine("Test complete.");
-        }
-
-        private static void RecordRt(DateTime timestamp, ConcurrentBag<long> roundTripTimes)
-        {
-            var rt = (DateTime.UtcNow - timestamp).TotalMilliseconds;
-            roundTripTimes.Add((long)rt);
+            Console.WriteLine($"Failures: {failures.Count}, Messages received: {received}, Avg RT: {avg:F2} ms, Min: {min}, Max: {max}");
         }
 
         private static void WriteMessageFrequencyResultsToCsv(
-            string filePath, int clients, int topics, int msgPerSecond, int durationSec,
+            string filePath, int clients, int topicsCount, int msgPerSecond, int durationSec,
             int failures, int received, double avg, long min, long max)
         {
             var newFile = !File.Exists(filePath);
@@ -189,17 +163,23 @@ namespace DataLoomStressTest
             }
             writer.WriteLine(string.Join(",", new[]
             {
-                DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                DateTime.UtcNow.ToString("o"),
                 clients.ToString(),
-                topics.ToString(),
+                topicsCount.ToString(),
                 msgPerSecond.ToString(),
                 durationSec.ToString(),
                 failures.ToString(),
                 received.ToString(),
-                avg.ToString("F2", CultureInfo.InvariantCulture),
+                avg.ToString("F2"),
                 min.ToString(),
                 max.ToString()
             }));
+        }
+
+
+        private static void RecordRt(DateTime timestamp, List<long> roundTripTimes)
+        {
+            roundTripTimes.Add((long)(DateTime.UtcNow - timestamp).TotalMilliseconds);
         }
     }
 }
